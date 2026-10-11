@@ -118,3 +118,43 @@ class VoiceBridge:
                     logger.warning("%s", failure)
             try:
                 await websocket.close()
+            except RuntimeError:
+                pass
+
+    async def relay(self, twilio: WebSocket, agent, session_id: str, stream_sid: str) -> None:
+        settings_ready = asyncio.Event()
+        finished = asyncio.Event()
+        sending = asyncio.Lock()
+        end_requested = False
+        end_requested_at = 0.0
+        final_mark = None
+        audio_active = False
+        last_activity = time.monotonic()
+
+        async def send_twilio(message: dict) -> None:
+            async with sending:
+                await twilio.send_json({"streamSid": stream_sid, **message})
+
+        async def mark_end() -> None:
+            nonlocal final_mark
+            if final_mark is None:
+                final_mark = "buddy-end-" + secrets.token_hex(8)
+                await send_twilio({"event": "mark", "mark": {"name": final_mark}})
+
+        async def from_agent() -> None:
+            nonlocal end_requested, end_requested_at, audio_active, last_activity
+            async for message in agent:
+                if isinstance(message, bytes):
+                    audio_active = True
+                    last_activity = time.monotonic()
+                    await send_twilio(
+                        {
+                            "event": "media",
+                            "media": {"payload": base64.b64encode(message).decode("ascii")},
+                        }
+                    )
+                    continue
+                event = json.loads(message)
+                kind = event.get("type")
+                if kind == "SettingsApplied":
+                    settings_ready.set()
