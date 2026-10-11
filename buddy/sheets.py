@@ -73,7 +73,6 @@ def checkin_row(session: dict, timezone: str) -> list:
     ]
 
 
-
 class SheetsClient:
     label = "Google Sheet"
 
@@ -86,10 +85,6 @@ class SheetsClient:
     @property
     def configured(self) -> bool:
         return not self.settings.missing_google_settings()
-        self.settings = settings
-        self.http = http
-        self.credentials = None
-        self.initialized = False
 
     @property
     def target(self) -> str:
@@ -100,7 +95,9 @@ class SheetsClient:
         return f"https://sheets.googleapis.com/v4/spreadsheets/{self.settings.google_sheet_id}"
 
     def refresh_credentials(self) -> str:
-                
+        import google.auth
+        from google.auth.transport.requests import Request
+
         if self.credentials is None:
             self.credentials, _ = google.auth.load_credentials_from_file(
                 str(self.settings.credentials_path),
@@ -280,31 +277,7 @@ class SheetsClient:
                     ]
                 },
             )
-        answers = session["answers"]
-
-        def answer(section: str) -> str:
-            return answers.get(section, {}).get("answer", "")
-
-        row = [
-            session["id"],
-            session["checkin_date"],
-            session["status"],
-            answer("accomplishments"),
-            answer("learning"),
-            answer("spending"),
-            json.dumps(totals(session["expenses"])),
-            json.dumps(session["expenses"], ensure_ascii=False),
-            answer("income"),
-            json.dumps(totals(session["income"])),
-            json.dumps(session["income"], ensure_ascii=False),
-            answer("wellbeing"),
-            answer("tomorrow"),
-            answer("notes"),
-            ", ".join(key for key, value in answers.items() if value.get("skipped")),
-            self.settings.timezone,
-            session["updated_at"],
-            session["call_status"],
-        ]
+        row = checkin_row(session, self.settings.timezone)
         await self.request(
             "PUT",
             self.value_path(f"A{row_number}:R{row_number}"),
@@ -322,7 +295,7 @@ class SheetsSync:
         self.last_error: str | None = None
 
     async def flush(self) -> dict:
-        if self.client.settings.missing_sheet_settings():
+        if not self.client.configured:
             return {"synced": 0, "configured": False}
         synced = 0
         async with self.lock:
@@ -331,7 +304,8 @@ class SheetsSync:
                     await self.client.write(self.store, session)
                     self.store.mark_synced(self.client.target, session["id"], session["version"])
                     logger.info(
-                        "Google Sheet updated | check-in %s | revision %s",
+                        "%s updated | check-in %s | revision %s",
+                        self.client.label,
                         session["id"],
                         session["version"],
                     )
@@ -340,9 +314,9 @@ class SheetsSync:
                 except IntegrationError as exc:
                     self.last_error = str(exc)
                     self.store.mark_sync_error(session["id"], self.last_error, time.time())
-                    logger.warning("Sheets sync pending: %s", self.last_error)
+                    logger.warning("%s update pending: %s", self.client.label, self.last_error)
                 except Exception:
-                    self.last_error = "Sheets sync failed. Your answers remain saved locally; inspect the configuration."
+                    self.last_error = "Spreadsheet update failed. Your answers remain saved locally; inspect the configuration."
                     self.store.mark_sync_error(session["id"], self.last_error, time.time())
                     logger.warning("Sheets sync pending after an unexpected failure")
         return {"synced": synced, "configured": True, "error": self.last_error}
