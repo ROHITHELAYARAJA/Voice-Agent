@@ -98,3 +98,43 @@ class SheetsClient:
         return response.json()
 
     def value_path(self, cells: str) -> str:
+        title = self.settings.google_sheet_tab.replace("'", "''")
+        return "/values/" + quote(f"'{title}'!{cells}", safe="")
+
+    async def initialize(self) -> None:
+        if self.initialized:
+            return
+        metadata = await self.request("GET", params={"fields": "sheets.properties"})
+        properties = next(
+            (
+                sheet["properties"]
+                for sheet in metadata.get("sheets", [])
+                if sheet["properties"]["title"] == self.settings.google_sheet_tab
+            ),
+            None,
+        )
+        if properties is None:
+            created = await self.request(
+                "POST",
+                ":batchUpdate",
+                json={
+                    "requests": [
+                        {
+                            "addSheet": {
+                                "properties": {
+                                    "title": self.settings.google_sheet_tab,
+                                    "gridProperties": {
+                                        "rowCount": 1000,
+                                        "columnCount": len(HEADERS),
+                                        "frozenRowCount": 1,
+                                    },
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
+            properties = created["replies"][0]["addSheet"]["properties"]
+        header = await self.request("GET", self.value_path("A1:R1"))
+        values = header.get("values", [])
+        if values and values[0] != HEADERS:
