@@ -68,3 +68,10 @@ class CompleteInput(StrictModel):
 class EndInput(StrictModel):
     reason: str = Field(default="User requested to stop", max_length=300)
 
+
+def totals(entries: list[dict]) -> dict[str, str]:
+    amounts: dict[str, Decimal] = {}
+    for entry in entries:
+        currency = entry["currency"]
+        amounts[currency] = amounts.get(currency, Decimal("0")) + Decimal(entry["amount"])
+    return {currency: f"{amount:.2f}" for currency, amount in sorted(amounts.items())}
