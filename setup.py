@@ -28,31 +28,3 @@ def main() -> None:
         "Google Sheets: enable its API and share the spreadsheet with the service account as Editor."
     )
     print("Keep your credential JSON inside the git-ignored credentials folder.")
-    for key, label, secret in FIELDS:
-        existing = values.get(key) or os.getenv(key)
-        prompt = f"{label} [{'configured' if existing else 'missing'}]: "
-        value = (getpass.getpass(prompt) if secret else input(prompt)).strip()
-        if value:
-            set_key(path, key, value)
-    for key, default in {
-        "LLM_PROVIDER": "google",
-        "LLM_MODEL": "gemini-3.8-flash",
-        "TTS_PROVIDER": "eleven_labs",
-        "TTS_MODEL": "eleven_turbo_v2_5",
-        "TTS_VOICE_ID": "cgSgspJ2msm6clMCkdW9",
-        "OWNER_NAME": "Rohith",
-        "TIMEZONE": "Asia/Kolkata",
-        "CURRENCY": "INR",
-        "GOOGLE_SHEET_TAB": "Buddy Checkins",
-    }.items():
-        if not dotenv_values(path).get(key):
-            set_key(path, key, default)
-    print("Settings saved locally. Run: uv run python run.py --doctor --live-check")
-    print("Start and call yourself: uv run python run.py --call")
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except (KeyboardInterrupt, EOFError):
-        print("\nSetup stopped. Any values already entered remain saved.")
