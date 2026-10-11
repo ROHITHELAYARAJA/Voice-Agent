@@ -78,3 +78,37 @@ def test_tool_replay_and_invalid_arguments(checkin):
     args = '{"section":"consent","answer":"Yes","consent":true}'
     first = service.execute(sid, "function-1", "record_answer", args)
     version = service.store.get(sid)["version"]
+    assert service.execute(sid, "function-1", "record_answer", args) == first
+    assert service.store.get(sid)["version"] == version
+    assert service.execute(sid, "function-2", "record_answer", "not json")["ok"] is False
+    assert (
+        service.execute(
+            sid,
+            "function-3",
+            "record_answer",
+            {
+                "section": "spending",
+                "answer": "test",
+                "entries": [{"amount": "-3", "currency": "INR", "description": "tea"}],
+            },
+        )["ok"]
+        is False
+    )
+
+
+def test_answers_survive_reopening_the_database(checkin):
+    service, sid = checkin
+    service.answer(sid, AnswerInput(section="consent", answer="Yes", consent=True))
+    reopened = CheckinService(Store(service.store.path))
+    assert reopened.state(sid)["next_section"] == "accomplishments"
+
+
+def test_agent_uses_requested_model_and_authenticated_jessica(settings, checkin):
+    service, sid = checkin
+    value = build_agent_settings(settings, service.state(sid))
+    assert value["agent"]["think"]["provider"]["model"] == "gemini-3.8-flash"
+    speak = value["agent"]["speak"]
+    assert "cgSgspJ2msm6clMCkdW9" in speak["endpoint"]["url"]
+    assert speak["endpoint"]["headers"]["xi-api-key"] == "test-elevenlabs"
+    assert "voice_id" not in speak["provider"]
+    assert all(function["defer_until_eot"] for function in value["agent"]["think"]["functions"])
