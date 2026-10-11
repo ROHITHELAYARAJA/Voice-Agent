@@ -218,3 +218,8 @@ class Store:
                 """
                 UPDATE sessions SET call_status = 'interrupted',
                 status = CASE WHEN status IN ('completed', 'declined') THEN status ELSE 'interrupted' END,
+                version = version + 1, updated_at = ?
+                WHERE call_status IN ('starting', 'queued', 'ringing', 'in-progress')
+            """,
+                (utc_now(),),
+            )
