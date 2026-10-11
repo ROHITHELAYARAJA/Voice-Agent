@@ -218,3 +218,43 @@ class SheetsClient:
         )
         if row_number > properties["gridProperties"]["rowCount"]:
             await self.request(
+                "POST",
+                ":batchUpdate",
+                json={
+                    "requests": [
+                        {
+                            "appendDimension": {
+                                "sheetId": properties["sheetId"],
+                                "dimension": "ROWS",
+                                "length": max(
+                                    1000, row_number - properties["gridProperties"]["rowCount"]
+                                ),
+                            }
+                        }
+                    ]
+                },
+            )
+        answers = session["answers"]
+
+        def answer(section: str) -> str:
+            return answers.get(section, {}).get("answer", "")
+
+        row = [
+            session["id"],
+            session["checkin_date"],
+            session["status"],
+            answer("accomplishments"),
+            answer("learning"),
+            answer("spending"),
+            json.dumps(totals(session["expenses"])),
+            json.dumps(session["expenses"], ensure_ascii=False),
+            answer("income"),
+            json.dumps(totals(session["income"])),
+            json.dumps(session["income"], ensure_ascii=False),
+            answer("wellbeing"),
+            answer("tomorrow"),
+            answer("notes"),
+            ", ".join(key for key, value in answers.items() if value.get("skipped")),
+            self.settings.timezone,
+            session["updated_at"],
+            session["call_status"],
