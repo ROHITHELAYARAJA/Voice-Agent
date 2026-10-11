@@ -88,3 +88,33 @@ class CheckinService:
             raise ValueError(
                 "Complete all questions, read back the summary, and get explicit confirmation first"
             )
+        self.store.update(session_id, status="completed")
+        return self.state(session_id)
+
+    def end(self, session_id: str, payload: EndInput) -> dict:
+        session = self.store.get(session_id)
+        if session["status"] not in {"completed", "declined"}:
+            self.store.update(session_id, status="interrupted")
+        return {**self.state(session_id), "end_call": True, "reason": payload.reason}
+
+    def execute(self, session_id: str, function_id: str, name: str, arguments: str | dict) -> dict:
+        if not function_id or len(function_id) > 200:
+            return {"ok": False, "error": "Missing or invalid function ID"}
+        cached = self.store.tool_result(session_id, function_id)
+        if cached is not None:
+            return cached
+        try:
+            raw = json.loads(arguments) if isinstance(arguments, str) else arguments
+            if name == "get_checkin_state":
+                if raw != {}:
+                    raise ValueError("get_checkin_state takes no arguments")
+                result = self.state(session_id)
+            elif name == "record_answer":
+                result = self.answer(session_id, AnswerInput.model_validate(raw))
+            elif name == "complete_checkin":
+                result = self.complete(session_id, CompleteInput.model_validate(raw))
+            elif name == "end_conversation":
+                result = self.end(session_id, EndInput.model_validate(raw))
+            else:
+                raise ValueError("Unknown function")
+            result = {"ok": True, **result}
