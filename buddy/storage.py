@@ -138,6 +138,10 @@ class Store:
                 "INSERT INTO transcripts(session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
                 (session_id, role, content[:10000], utc_now()),
             )
+            db.execute(
+                "UPDATE sessions SET version = version + 1, updated_at = ?, next_sync_at = 0 WHERE id = ?",
+                (utc_now(), session_id),
+            )
 
     def transcripts(self, session_id: str) -> list[dict]:
         with self.connection() as db:
