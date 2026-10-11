@@ -58,3 +58,43 @@ class Store:
             raise
         finally:
             db.close()
+
+    @staticmethod
+    def decode(row) -> dict:
+        value = dict(row)
+        for field in ("answers", "expenses", "income"):
+            value[field] = json.loads(value[field])
+        return value
+
+    def create(self, checkin_date: str) -> dict:
+        session_id = uuid4().hex
+        now = utc_now()
+        with self.connection() as db:
+            db.execute(
+                "INSERT INTO sessions(id, checkin_date, created_at, updated_at, stream_token) VALUES (?, ?, ?, ?, ?)",
+                (session_id, checkin_date, now, now, secrets.token_urlsafe(32)),
+            )
+        return self.get(session_id)
+
+    def get(self, session_id: str) -> dict:
+        with self.connection() as db:
+            row = db.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if row is None:
+            raise KeyError("Check-in not found")
+        return self.decode(row)
+
+    def list_sessions(self, limit: int = 50) -> list[dict]:
+        with self.connection() as db:
+            rows = db.execute(
+                "SELECT * FROM sessions ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [self.decode(row) for row in rows]
+
+    def update(self, session_id: str, **changes) -> dict:
+        allowed = {
+            "status",
+            "call_status",
+            "call_sid",
+            "answers",
+            "expenses",
+            "income",
