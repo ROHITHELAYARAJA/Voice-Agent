@@ -27,6 +27,33 @@ def sts_connect():
     )
 
 
+def execute_function(name: str, raw_arguments: str) -> str:
+    try:
+        args = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
+    except Exception:
+        args = {}
+
+    if name == "arithmetic":
+        operation = args.get("operation", "add")
+        a = float(args.get("a", 0))
+        b = float(args.get("b", 0))
+
+        if operation == "add":
+            return str(a + b)
+        elif operation == "subtract":
+            return str(a - b)
+        elif operation == "multiply":
+            return str(a * b)
+        elif operation == "divide":
+            return str(a / b) if b != 0 else "Cannot divide by zero"
+        return "Unknown operation"
+
+    elif name == "end_conversation":
+        return "Call ended successfully"
+
+    return "Executed"
+
+
 async def agent_to_twilio(twilio_ws: WebSocket, agent_ws, stream_sid_box: dict) -> None:
     try:
         while True:
@@ -57,6 +84,20 @@ async def agent_to_twilio(twilio_ws: WebSocket, agent_ws, stream_sid_box: dict) 
                     role = data.get("role", "unknown")
                     content = data.get("content", "")
                     print(f"[{role}] {content}")
+                elif event_type == "FunctionCallRequest":
+                    for fn in data.get("functions", []):
+                        fn_id = fn.get("id")
+                        fn_name = fn.get("name")
+                        fn_args = fn.get("arguments", "{}")
+                        output = execute_function(fn_name, fn_args)
+                        await agent_ws.send(
+                            json.dumps({
+                                "type": "FunctionCallResponse",
+                                "id": fn_id,
+                                "name": fn_name,
+                                "content": output,
+                            })
+                        )
     except (websockets.exceptions.ConnectionClosed, asyncio.CancelledError):
         pass
 
@@ -67,6 +108,9 @@ async def root():
         "status": "online",
         "service": "Twilio-Deepgram Voice Agent",
         "public_host": PUBLIC_HOSTNAME,
+        "llm": "Google Gemini 2.5 Flash",
+        "tts": "ElevenLabs (Jessica)",
+        "stt": "Deepgram Flux",
     }
 
 

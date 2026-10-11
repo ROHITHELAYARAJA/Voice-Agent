@@ -8,13 +8,55 @@ PUBLIC_HOSTNAME = os.getenv("PUBLIC_HOSTNAME", "localhost:8000")
 PORT = int(os.getenv("PORT", 8000))
 DEEPGRAM_WS_URL = "wss://agent.deepgram.com/v1/agent/converse"
 
+GREETING = "Hello! How may I help you?"
+
 PROMPT = (
-    "You are a friendly, helpful, and concise AI phone assistant. "
-    "Keep your responses short, conversational, and within 1 or 2 sentences. "
-    "Do not use markdown, emojis, or bullet points because replies are spoken aloud."
+    "You are a friendly, helpful, and concise voice phone assistant. "
+    "Keep your responses natural and conversational, strictly within 1 or 2 sentences. "
+    "Do not use markdown, emojis, asterisks, or bullet points because replies are spoken aloud. "
+    "If the user asks to calculate or do math, use the arithmetic function. "
+    "If the user says goodbye or wants to end the call, use the end_conversation function."
 )
 
-GREETING = "Hi! Thanks for calling. How can I help you today?"
+KEYTERMS = [
+    "Deepgram",
+    "ElevenLabs",
+    "Twilio",
+    "Gemini",
+    "Voice Agent",
+]
+
+FUNCTIONS = [
+    {
+        "name": "arithmetic",
+        "description": "Performs basic arithmetic operations.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["add", "subtract", "multiply", "divide"],
+                },
+                "a": {"type": "number"},
+                "b": {"type": "number"},
+            },
+            "required": ["operation", "a", "b"],
+        },
+    },
+    {
+        "name": "end_conversation",
+        "description": "Ends the phone call gracefully.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Reason for ending the conversation",
+                }
+            },
+        },
+    },
+]
 
 AGENT_SETTINGS = {
     "type": "Settings",
@@ -29,20 +71,23 @@ AGENT_SETTINGS = {
                 "type": "deepgram",
                 "version": "v2",
                 "model": "flux-general-en",
+                "keyterms": KEYTERMS,
             }
         },
         "think": {
             "provider": {
-                "type": "open_ai",
-                "model": "gpt-4o-mini",
+                "type": "google",
+                "model": "gemini-2.5-flash",
+                "temperature": 0.7,
             },
             "prompt": PROMPT,
+            "functions": FUNCTIONS,
         },
         "speak": {
             "provider": {
-                "type": "deepgram",
-                "version": "v2",
-                "model": "flux-alexis-en",
+                "type": "eleven_labs",
+                "model_id": "eleven_turbo_v2_5",
+                "voice_id": "cgSgspJ2msm6clMCkdW9",
             }
         },
         "greeting": GREETING,
