@@ -66,3 +66,15 @@ class ExcelClient:
         )
         self.make_sheet(workbook, LOG_TAB, LOG_HEADERS, [14, 34, 30, 16, 100])
         return workbook
+
+    @staticmethod
+    def put_row(sheet, number: int, values: list):
+        from openpyxl.styles import Alignment, Font
+
+        for column, value in enumerate(values, 1):
+            cell = sheet.cell(number, column, value)
+            if isinstance(value, str):
+                cell.data_type = "s"
+            cell.font = Font(name="Arial", size=11, color="24332D")
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+        sheet.row_dimensions[number].height = 45
