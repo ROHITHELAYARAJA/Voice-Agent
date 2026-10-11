@@ -33,3 +33,38 @@ class BuddyRuntime:
     async def start(self) -> None:
         self.store.recover_calls()
         self.worker = asyncio.create_task(self.sheets.run())
+
+    async def close(self) -> None:
+        active = self.active_call()
+        if active and active["call_sid"]:
+            try:
+                await self.hangup()
+            except IntegrationError:
+                logger.warning("Could not confirm call termination. Check the call in Twilio.")
+        if self.worker:
+            self.worker.cancel()
+            await asyncio.gather(self.worker, return_exceptions=True)
+        await self.http.aclose()
+
+    def new_session(self) -> dict:
+        return self.store.create(datetime.now(ZoneInfo(self.settings.timezone)).date().isoformat())
+
+    async def start_call(self, session_id: str | None = None) -> dict:
+        missing = self.settings.missing_call_settings()
+        if missing:
+            raise IntegrationError(
+                "Missing or invalid settings: "
+                + ", ".join(missing)
+                + ". Run uv run python setup.py."
+            )
+        async with self.call_lock:
+            if self.active_call():
+                raise IntegrationError(
+                    "A call is already active. Use hangup before starting another."
+                )
+            session = self.store.get(session_id) if session_id else self.new_session()
+            if session["status"] in {"completed", "declined"}:
+                raise IntegrationError("This check-in is closed. Use call to start a new check-in.")
+            self.store.update(
+                session["id"],
+                call_status="starting",
