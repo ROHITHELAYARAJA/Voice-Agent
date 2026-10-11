@@ -38,3 +38,43 @@ def test_refusal_does_not_complete_and_blocks_collection(checkin):
     result = service.answer(sid, AnswerInput(section="consent", answer="Not now", consent=False))
     assert result["status"] == "declined"
     assert result["next_section"] is None
+    with pytest.raises(ValueError, match="closed"):
+        service.answer(sid, AnswerInput(section="accomplishments", answer="Work"))
+
+
+def test_exact_money_corrections_skips_and_confirmation(checkin):
+    service, sid = checkin
+    finish_questions(service, sid)
+    service.answer(
+        sid,
+        AnswerInput(
+            section="spending",
+            answer="Two snacks and a USD payment",
+            entries=[
+                {"description": "Snack", "amount": "0.10", "currency": "INR"},
+                {"description": "Tea", "amount": "0.20", "currency": "INR"},
+                {"description": "Subscription", "amount": "3.20", "currency": "USD"},
+            ],
+        ),
+    )
+    assert service.state(sid)["spending_totals"] == {"INR": "0.30", "USD": "3.20"}
+    service.answer(
+        sid,
+        AnswerInput(
+            section="spending",
+            answer="Only tea, corrected",
+            entries=[{"description": "Tea", "amount": "0.20", "currency": "INR"}],
+        ),
+    )
+    assert len(service.state(sid)["expenses"]) == 1
+    service.answer(sid, AnswerInput(section="wellbeing", answer="Skipped by user", skipped=True))
+    with pytest.raises(ValueError, match="confirmation"):
+        service.complete(sid, CompleteInput(confirmed=False))
+    assert service.complete(sid, CompleteInput(confirmed=True))["status"] == "completed"
+
+
+def test_tool_replay_and_invalid_arguments(checkin):
+    service, sid = checkin
+    args = '{"section":"consent","answer":"Yes","consent":true}'
+    first = service.execute(sid, "function-1", "record_answer", args)
+    version = service.store.get(sid)["version"]
