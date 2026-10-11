@@ -73,3 +73,28 @@ def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = 
     async def twiml(request: Request):
         form = await verified_form(request)
         session_id = request.query_params.get("session_id")
+        response = VoiceResponse()
+        if session_id:
+            session = runtime.store.get(session_id)
+            if form.get("To") != settings.owner_phone_number:
+                raise HTTPException(403, "This call is not for the configured owner.")
+            if session["call_sid"] and session["call_sid"] != form.get("CallSid"):
+                raise HTTPException(403, "Call mismatch.")
+        else:
+            if (
+                not settings.owner_phone_number
+                or form.get("From") != settings.owner_phone_number
+                or form.get("To") != settings.twilio_phone_number
+            ):
+                response.reject(reason="rejected")
+                return Response(str(response), media_type="application/xml")
+            session = runtime.new_session()
+            session_id = session["id"]
+        if session["status"] in {"completed", "declined"}:
+            response.hangup()
+            return Response(str(response), media_type="application/xml")
+        runtime.store.update(session_id, call_sid=form.get("CallSid"), call_status="in-progress")
+        stream = response.connect().stream(
+            url=settings.public_url.replace("https://", "wss://") + "/media"
+        )
+        stream.parameter(name="session_id", value=session_id)
