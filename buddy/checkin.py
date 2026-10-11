@@ -58,3 +58,33 @@ class CheckinService:
         if answer.entries and (
             answer.section not in {Section.SPENDING, Section.INCOME} or answer.skipped
         ):
+            raise ValueError("Money entries belong only to answered spending or income questions")
+        session["answers"][answer.section.value] = {
+            "answer": answer.answer,
+            "skipped": answer.skipped,
+        }
+        changes = {"answers": session["answers"], "status": "in_progress"}
+        if answer.section == Section.CONSENT:
+            session["answers"]["consent"]["accepted"] = answer.consent
+            if not answer.consent:
+                changes["status"] = "declined"
+        if answer.section == Section.SPENDING:
+            changes["expenses"] = [item.model_dump(mode="json") for item in answer.entries]
+        if answer.section == Section.INCOME:
+            changes["income"] = [item.model_dump(mode="json") for item in answer.entries]
+        if (
+            all(section.value in session["answers"] for section in Section)
+            and changes["status"] != "declined"
+        ):
+            changes["status"] = "review"
+        self.store.update(session_id, **changes)
+        return self.state(session_id)
+
+    def complete(self, session_id: str, payload: CompleteInput) -> dict:
+        state = self.state(session_id)
+        if state["status"] == "completed":
+            return state
+        if state["next_section"] != "review" or not payload.confirmed:
+            raise ValueError(
+                "Complete all questions, read back the summary, and get explicit confirmation first"
+            )
