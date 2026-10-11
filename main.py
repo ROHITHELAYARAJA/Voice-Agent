@@ -123,3 +123,24 @@ def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = 
             and not websocket.url.query
             and (
                 validator.validate(url, {}, signature)
+                or validator.validate(url + "/", {}, signature)
+            )
+        )
+        if not valid:
+            await websocket.close(code=1008)
+            return
+        await runtime.bridge.run(websocket)
+
+    return application
+
+
+if __name__ == "__main__":
+    settings = Settings.from_env()
+    configure_logging(settings.timezone)
+    uvicorn.run(
+        create_app(settings),
+        host="127.0.0.1",
+        port=settings.port,
+        proxy_headers=False,
+        ws_max_size=65536,
+    )
