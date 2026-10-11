@@ -178,3 +178,43 @@ class SheetsClient:
                                 "fields": "userEnteredFormat",
                             }
                         },
+                        {
+                            "updateSheetProperties": {
+                                "properties": {
+                                    "sheetId": properties["sheetId"],
+                                    "gridProperties": {"frozenRowCount": 1},
+                                },
+                                "fields": "gridProperties.frozenRowCount",
+                            }
+                        },
+                    ]
+                },
+            )
+        self.initialized = True
+
+    async def write(self, store: Store, session: dict) -> None:
+        await self.initialize()
+        column = await self.request("GET", self.value_path("A:A"))
+        ids = column.get("values", [])
+        row_number = store.reserve_row(self.target, session["id"], max(2, len(ids) + 1))
+        if (
+            row_number <= len(ids)
+            and ids[row_number - 1]
+            and ids[row_number - 1][0] != session["id"]
+        ):
+            raise IntegrationError(
+                "The reserved sheet row was moved or edited. Restore the tab's original row order before syncing."
+            )
+        matches = [index + 1 for index, row in enumerate(ids) if row and row[0] == session["id"]]
+        if matches and matches != [row_number]:
+            raise IntegrationError(
+                "The check-in row was moved or duplicated in Sheets. Restore the original row order before syncing."
+            )
+        metadata = await self.request("GET", params={"fields": "sheets.properties"})
+        properties = next(
+            sheet["properties"]
+            for sheet in metadata["sheets"]
+            if sheet["properties"]["title"] == self.settings.google_sheet_tab
+        )
+        if row_number > properties["gridProperties"]["rowCount"]:
+            await self.request(
