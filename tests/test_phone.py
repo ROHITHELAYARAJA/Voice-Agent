@@ -78,3 +78,42 @@ async def test_outbound_only_calls_owner_and_prevents_second_call(settings):
         requests.append(parse_qs(request.content.decode()))
         return httpx.Response(201, json={"sid": "CA123", "status": "queued"})
 
+    runtime = BuddyRuntime(settings)
+    await runtime.http.aclose()
+    runtime.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    runtime.telephony.http = runtime.http
+    try:
+        session = await runtime.start_call()
+        assert requests[0]["To"] == [settings.owner_phone_number]
+        assert requests[0]["StatusCallbackEvent"] == [
+            "initiated",
+            "ringing",
+            "answered",
+            "completed",
+        ]
+        assert session["call_sid"] == "CA123"
+        with pytest.raises(IntegrationError, match="already active"):
+            await runtime.start_call()
+        assert len(requests) == 1
+    finally:
+        await runtime.close()
+
+
+def test_stream_token_and_call_binding(settings):
+    runtime = BuddyRuntime(settings)
+    session = runtime.new_session()
+    runtime.store.update(session["id"], call_sid="CA123")
+    start = {
+        "accountSid": settings.twilio_account_sid,
+        "callSid": "CA123",
+        "streamSid": "MZ123",
+        "mediaFormat": {"encoding": "audio/x-mulaw", "sampleRate": 8000, "channels": 1},
+        "customParameters": {"session_id": session["id"], "stream_token": session["stream_token"]},
+    }
+    assert runtime.bridge.validate_start(start)["id"] == session["id"]
+    start["customParameters"]["stream_token"] = "wrong"
+    with pytest.raises(ValueError, match="token"):
+        runtime.bridge.validate_start(start)
+    import asyncio
+
+    asyncio.run(runtime.close())
