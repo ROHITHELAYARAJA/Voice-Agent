@@ -103,3 +103,40 @@ class BuddyRuntime:
         )
 
     async def hangup(self) -> None:
+        session = self.active_call()
+        if not session or not session["call_sid"]:
+            raise IntegrationError("No active call is available to end.")
+        await self.telephony.hangup(session["call_sid"])
+        changes = {"call_status": "completed"}
+        if session["status"] not in {"completed", "declined"}:
+            changes["status"] = "interrupted"
+        self.store.update(session["id"], **changes)
+        self.sheets.wake.set()
+        logger.info("Call ended. Every saved answer is retained.")
+
+    def callback(self, session_id: str, form) -> None:
+        session = self.store.get(session_id)
+        sid = form.get("CallSid")
+        if session["call_sid"] != sid:
+            if (
+                session["call_status"] != "starting"
+                or session["call_sid"] is not None
+                or form.get("To") != self.settings.owner_phone_number
+            ):
+                raise ValueError("Call mismatch")
+            self.store.update(session_id, call_sid=sid)
+        value = form.get("CallStatus", "")
+        active = {"starting": 0, "queued": 1, "initiated": 1, "ringing": 2, "in-progress": 3}
+        terminal = {"completed", "busy", "failed", "no-answer", "canceled", "interrupted"}
+        if value not in active and value not in terminal:
+            raise ValueError("Unknown call status")
+        if session["call_status"] in terminal or (
+            value in active and active[value] < active.get(session["call_status"], 0)
+        ):
+            return
+        changes = {"call_status": value}
+        if value in terminal and session["status"] not in {"completed", "declined"}:
+            changes["status"] = "interrupted"
+        self.store.update(session_id, **changes)
+        self.sheets.wake.set()
+        logger.info("Call %s | %s", sid, value)
