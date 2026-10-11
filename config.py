@@ -48,3 +48,28 @@ class Settings:
             "owner_phone_number": "OWNER_PHONE_NUMBER",
             "owner_name": "OWNER_NAME",
             "google_sheet_id": "GOOGLE_SHEET_ID",
+            "google_credentials_file": "GOOGLE_CREDENTIALS_FILE",
+            "google_sheet_tab": "GOOGLE_SHEET_TAB",
+            "timezone": "TIMEZONE",
+            "currency": "CURRENCY",
+            "llm_provider": "LLM_PROVIDER",
+            "llm_model": "LLM_MODEL",
+            "tts_provider": "TTS_PROVIDER",
+            "tts_model": "TTS_MODEL",
+            "tts_voice": "TTS_VOICE_ID",
+        }
+        values = {
+            field: os.environ[name].strip() for field, name in names.items() if name in os.environ
+        }
+        for field_name in ("port", "max_call_seconds", "silence_timeout_seconds"):
+            if field_name.upper() in os.environ:
+                values[field_name] = int(os.environ[field_name.upper()])
+        if os.getenv("DATA_DIR"):
+            values["data_dir"] = Path(os.environ["DATA_DIR"]).expanduser().resolve()
+        settings = cls(**values)
+        ZoneInfo(settings.timezone)
+        if not 1 <= settings.port <= 65535:
+            raise ValueError("PORT must be between 1 and 65535")
+        if not 60 <= settings.max_call_seconds <= 3600:
+            raise ValueError("MAX_CALL_SECONDS must be between 60 and 3600")
+        if not 30 <= settings.silence_timeout_seconds <= 600:
