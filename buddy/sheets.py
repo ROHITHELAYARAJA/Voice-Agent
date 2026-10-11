@@ -4,9 +4,7 @@ import logging
 import time
 from urllib.parse import quote
 
-import google.auth
 import httpx
-from google.auth.transport.requests import Request
 
 from buddy.models import totals
 from buddy.storage import Store
@@ -102,6 +100,7 @@ class SheetsClient:
         return f"https://sheets.googleapis.com/v4/spreadsheets/{self.settings.google_sheet_id}"
 
     def refresh_credentials(self) -> str:
+                
         if self.credentials is None:
             self.credentials, _ = google.auth.load_credentials_from_file(
                 str(self.settings.credentials_path),
