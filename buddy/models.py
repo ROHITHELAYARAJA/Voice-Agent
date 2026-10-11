@@ -48,3 +48,23 @@ class MoneyEntry(StrictModel):
 
 class AnswerInput(StrictModel):
     section: Section
+    answer: str = Field(min_length=1, max_length=5000)
+    skipped: bool = False
+    consent: bool | None = None
+    entries: list[MoneyEntry] = Field(default_factory=list, max_length=50)
+
+    @field_validator("answer")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Answer cannot be blank")
+        return value.strip()
+
+
+class CompleteInput(StrictModel):
+    confirmed: bool
+
+
+class EndInput(StrictModel):
+    reason: str = Field(default="User requested to stop", max_length=300)
+
