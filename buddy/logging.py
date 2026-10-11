@@ -13,17 +13,3 @@ class TerminalFormatter(logging.Formatter):
         return datetime.fromtimestamp(record.created, self.timezone).strftime(datefmt or "%H:%M:%S")
 
     def format(self, record):
-        line = super().format(record)
-        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", line)
-        return re.sub(r"[\x00-\x1f\x7f]", " ", line)
-
-
-def configure_logging(timezone: str) -> None:
-    handler = logging.StreamHandler()
-    handler.setFormatter(TerminalFormatter(timezone))
-    root = logging.getLogger()
-    root.handlers.clear()
-    root.addHandler(handler)
-    root.setLevel(logging.INFO)
-    for name in ("httpx", "httpcore", "websockets", "ngrok", "uvicorn.access"):
-        logging.getLogger(name).setLevel(logging.WARNING)
