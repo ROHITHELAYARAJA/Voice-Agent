@@ -238,3 +238,36 @@ class VoiceBridge:
                 ):
                     finished.set()
                 elif kind == "stop":
+                    finished.set()
+
+        async def supervise() -> None:
+            while not finished.is_set():
+                try:
+                    await asyncio.wait_for(finished.wait(), timeout=1)
+                except TimeoutError:
+                    now = time.monotonic()
+                    if end_requested and not audio_active and now - end_requested_at >= 2:
+                        await mark_end()
+                    if end_requested and now - end_requested_at >= 15:
+                        finished.set()
+                    if now - last_activity > self.settings.silence_timeout_seconds:
+                        raise TimeoutError("No conversation activity")
+
+        async def keep_alive() -> None:
+            while not finished.is_set():
+                await asyncio.sleep(5)
+                await agent.send(json.dumps({"type": "KeepAlive"}))
+
+        tasks = [
+            asyncio.create_task(coro()) for coro in (from_agent, from_twilio, supervise, keep_alive)
+        ]
+        tasks.append(asyncio.create_task(finished.wait()))
+        try:
+            async with asyncio.timeout(self.settings.max_call_seconds):
+                done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    task.result()
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
