@@ -21,9 +21,6 @@ class BuddyRuntime:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.store = Store(settings.data_dir / "buddy.sqlite3")
-        self.checkin = CheckinService(
-            self.store, f"{settings.google_sheet_id}:{settings.google_sheet_tab}"
-        )
         self.http = httpx.AsyncClient(timeout=20)
         client = (
             ExcelClient(settings)
@@ -39,6 +36,12 @@ class BuddyRuntime:
 
     async def start(self) -> None:
         self.store.recover_calls()
+        if isinstance(self.sheets.client, ExcelClient):
+            try:
+                await self.sheets.client.initialize(self.store)
+                logging.getLogger("SHEETS").info("Local Excel file: %s", self.settings.excel_path)
+            except IntegrationError as exc:
+                logging.getLogger("SHEETS").warning("%s", exc)
         self.worker = asyncio.create_task(self.sheets.run())
 
     async def close(self) -> None:
@@ -51,6 +54,7 @@ class BuddyRuntime:
         if self.worker:
             self.worker.cancel()
             await asyncio.gather(self.worker, return_exceptions=True)
+        await self.sheets.flush()
         await self.http.aclose()
 
     def new_session(self) -> dict:
