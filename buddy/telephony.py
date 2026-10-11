@@ -23,3 +23,13 @@ class TwilioClient:
         if response.status_code >= 400:
             try:
                 code = response.json().get("code", response.status_code)
+            except ValueError:
+                code = response.status_code
+            raise IntegrationError(
+                f"Twilio rejected the request (code {code}). Check credentials, the caller number, and destination permissions."
+            )
+        return response.json()
+
+    async def call_owner(self, session_id: str) -> dict:
+        base = self.settings.public_url
+        return await self.request(
