@@ -28,3 +28,33 @@ class CheckinService:
             "answers": answers,
             "expenses": session["expenses"],
             "income": session["income"],
+            "spending_totals": totals(session["expenses"]),
+            "income_totals": totals(session["income"]),
+            "next_section": None if terminal else next_section.value if next_section else "review",
+            "next_question": None
+            if terminal
+            else QUESTIONS[next_section]
+            if next_section
+            else "Does this summary look correct, and may I finish saving your check-in?",
+            "saved_locally": True,
+            "sheets_status": "synced" if session["version"] == synced_version else "pending",
+        }
+
+    def answer(self, session_id: str, answer: AnswerInput) -> dict:
+        session = self.store.get(session_id)
+        state = self.state(session_id)
+        if session["status"] in {"completed", "declined"}:
+            raise ValueError("This check-in is closed. Start a new check-in.")
+        if (
+            answer.section.value != state["next_section"]
+            and answer.section.value not in session["answers"]
+        ):
+            raise ValueError(f"Ask the current question first: {state['next_section']}")
+        if answer.section == Section.CONSENT:
+            if answer.consent is None or answer.skipped:
+                raise ValueError("Explicit permission or refusal is required")
+        elif answer.consent is not None:
+            raise ValueError("Consent belongs only to the permission question")
+        if answer.entries and (
+            answer.section not in {Section.SPENDING, Section.INCOME} or answer.skipped
+        ):
