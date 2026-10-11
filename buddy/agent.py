@@ -55,7 +55,7 @@ def functions() -> list[dict]:
         ),
         (
             "record_answer",
-            "Save or correct one section after the user's answer. Money entries replace the complete section list.",
+            "Save one section. Money entries replace the entire list; retain unaffected entries. Set details_complete false for missing or estimated amounts; keep uncertainty in answer text, outside entries.",
             AnswerInput.model_json_schema(),
         ),
         (
@@ -86,7 +86,7 @@ def build_agent_settings(settings: Settings, state: dict) -> dict:
     if state["next_section"] == "consent":
         greeting = f"Hi {settings.owner_name}, it's Buddy, your AI check-in companion. I'll save your answers for you. Is now a good time for a short daily check-in?"
     else:
-        greeting = f"Hi {settings.owner_name}, it's Buddy. Your earlier answers are saved. Is now a good time to continue?"
+        greeting = f"Hi {settings.owner_name}, it's Buddy, your AI check-in companion. Is now a good time to continue your check-in?"
         prompt += "\nThis is a resumed call. Ask fresh permission before continuing. If yes, use get_checkin_state and resume the next question without overwriting existing consent."
     speak = {"type": settings.tts_provider}
     if settings.tts_provider == "eleven_labs":
