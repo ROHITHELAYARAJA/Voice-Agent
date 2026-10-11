@@ -258,3 +258,54 @@ class SheetsClient:
             self.settings.timezone,
             session["updated_at"],
             session["call_status"],
+        ]
+        await self.request(
+            "PUT",
+            self.value_path(f"A{row_number}:R{row_number}"),
+            params={"valueInputOption": "RAW"},
+            json={"values": [row]},
+        )
+
+
+class SheetsSync:
+    def __init__(self, store: Store, client: SheetsClient):
+        self.store = store
+        self.client = client
+        self.lock = asyncio.Lock()
+        self.wake = asyncio.Event()
+        self.last_error: str | None = None
+
+    async def flush(self) -> dict:
+        if self.client.settings.missing_sheet_settings():
+            return {"synced": 0, "configured": False}
+        synced = 0
+        async with self.lock:
+            for session in self.store.pending(self.client.target, time.time()):
+                try:
+                    await self.client.write(self.store, session)
+                    self.store.mark_synced(self.client.target, session["id"], session["version"])
+                    logger.info(
+                        "Google Sheet updated | check-in %s | revision %s",
+                        session["id"],
+                        session["version"],
+                    )
+                    self.last_error = None
+                    synced += 1
+                except IntegrationError as exc:
+                    self.last_error = str(exc)
+                    self.store.mark_sync_error(session["id"], self.last_error, time.time())
+                    logger.warning("Sheets sync pending: %s", self.last_error)
+                except Exception:
+                    self.last_error = "Sheets sync failed. Your answers remain saved locally; inspect the configuration."
+                    self.store.mark_sync_error(session["id"], self.last_error, time.time())
+                    logger.warning("Sheets sync pending after an unexpected failure")
+        return {"synced": synced, "configured": True, "error": self.last_error}
+
+    async def run(self) -> None:
+        while True:
+            self.wake.clear()
+            await self.flush()
+            try:
+                await asyncio.wait_for(self.wake.wait(), timeout=10)
+            except TimeoutError:
+                continue
