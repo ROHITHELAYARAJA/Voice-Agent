@@ -146,7 +146,7 @@ class Store:
     def transcripts(self, session_id: str) -> list[dict]:
         with self.connection() as db:
             rows = db.execute(
-                "SELECT role, content, created_at FROM transcripts WHERE session_id = ? ORDER BY id LIMIT 1000",
+                "SELECT id, role, content, created_at FROM transcripts WHERE session_id = ? ORDER BY id",
                 (session_id,),
             ).fetchall()
         return [dict(row) for row in rows]
