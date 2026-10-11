@@ -138,3 +138,43 @@ class SheetsClient:
         header = await self.request("GET", self.value_path("A1:R1"))
         values = header.get("values", [])
         if values and values[0] != HEADERS:
+            raise IntegrationError(
+                "The target tab has a different header. Choose a new GOOGLE_SHEET_TAB to protect existing data."
+            )
+        if not values:
+            existing = await self.request("GET", self.value_path("A2:R"))
+            if existing.get("values"):
+                raise IntegrationError(
+                    "The target tab contains data without a Buddy header. Choose an empty tab."
+                )
+            await self.request(
+                "PUT",
+                self.value_path("A1:R1"),
+                params={"valueInputOption": "RAW"},
+                json={"values": [HEADERS]},
+            )
+            await self.request(
+                "POST",
+                ":batchUpdate",
+                json={
+                    "requests": [
+                        {
+                            "repeatCell": {
+                                "range": {
+                                    "sheetId": properties["sheetId"],
+                                    "startRowIndex": 0,
+                                    "endRowIndex": 1,
+                                },
+                                "cell": {
+                                    "userEnteredFormat": {
+                                        "textFormat": {"bold": True},
+                                        "backgroundColor": {
+                                            "red": 0.12,
+                                            "green": 0.2,
+                                            "blue": 0.18,
+                                        },
+                                    }
+                                },
+                                "fields": "userEnteredFormat",
+                            }
+                        },
