@@ -21,6 +21,8 @@ class Settings:
     twilio_phone_number: str = ""
     owner_phone_number: str = ""
     owner_name: str = "Rohith"
+    sheet_backend: str = "excel"
+    excel_file: str = ""
     google_sheet_id: str = ""
     google_credentials_file: str = ""
     google_sheet_tab: str = "Buddy Checkins"
