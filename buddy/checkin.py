@@ -7,9 +7,12 @@ from buddy.storage import Store
 
 
 class CheckinService:
-    def __init__(self, store: Store, sheet_target: str | None = None):
+    def __init__(
+        self, store: Store, sheet_target: str | None = None, storage_backend: str = "excel"
+    ):
         self.store = store
         self.sheet_target = sheet_target
+        self.storage_backend = storage_backend
 
     def state(self, session_id: str) -> dict:
         session = self.store.get(session_id)
@@ -30,6 +33,13 @@ class CheckinService:
             "income": session["income"],
             "spending_totals": totals(session["expenses"]),
             "income_totals": totals(session["income"]),
+            "incomplete_money_sections": [
+                section
+                for section in ("spending", "income")
+                if section in answers
+                and not answers[section].get("skipped")
+                and not answers[section].get("details_complete", True)
+            ],
             "next_section": None if terminal else next_section.value if next_section else "review",
             "next_question": None
             if terminal
@@ -37,6 +47,7 @@ class CheckinService:
             if next_section
             else "Does this summary look correct, and may I finish saving your check-in?",
             "saved_locally": True,
+            "storage_backend": self.storage_backend,
             "sheets_status": "synced" if session["version"] == synced_version else "pending",
         }
 
