@@ -58,3 +58,43 @@ class SheetsClient:
         if self.credentials is None:
             self.credentials, _ = google.auth.load_credentials_from_file(
                 str(self.settings.credentials_path),
+                scopes=["https://www.googleapis.com/auth/spreadsheets"],
+            )
+        if not self.credentials.valid:
+            self.credentials.refresh(Request())
+        return self.credentials.token
+
+    async def request(self, method: str, suffix: str = "", **kwargs) -> dict:
+        try:
+            token = await asyncio.to_thread(self.refresh_credentials)
+        except Exception:
+            raise IntegrationError(
+                "Google authentication failed. Check the credentials file and Sheets permission."
+            ) from None
+        try:
+            response = await self.http.request(
+                method,
+                self.base_url + suffix,
+                headers={"Authorization": f"Bearer {token}"},
+                **kwargs,
+            )
+        except httpx.HTTPError:
+            raise IntegrationError(
+                "Google Sheets could not be reached. Your answers remain saved locally."
+            ) from None
+        if response.status_code >= 400:
+            messages = {
+                401: "Google credentials were rejected.",
+                403: "Google denied access. Enable the Sheets API and share the spreadsheet with your service account as Editor.",
+                404: "Spreadsheet not found. Check GOOGLE_SHEET_ID and access.",
+                429: "Google Sheets rate limit reached. Sync will retry.",
+            }
+            raise IntegrationError(
+                messages.get(
+                    response.status_code,
+                    f"Google Sheets returned HTTP {response.status_code}. Sync will retry.",
+                )
+            )
+        return response.json()
+
+    def value_path(self, cells: str) -> str:
