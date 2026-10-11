@@ -78,3 +78,43 @@ class VoiceBridge:
                 max_size=2**20,
                 max_queue=16,
             ) as agent:
+                logger.info(
+                    "Authenticated | sending settings | %s | ElevenLabs Jessica",
+                    self.settings.llm_model,
+                )
+                await agent.send(
+                    json.dumps(build_agent_settings(self.settings, self.checkin.state(session_id)))
+                )
+                await self.relay(websocket, agent, session_id, start["streamSid"])
+        except (WebSocketDisconnect, websockets.exceptions.ConnectionClosed):
+            failure = "The audio connection closed. Your saved answers are available to resume."
+        except TimeoutError:
+            failure = "The call reached its time or silence limit. Your saved answers are available to resume."
+        except (ValueError, KeyError, binascii.Error):
+            failure = "The call stream could not be validated or contained invalid data."
+        except asyncio.CancelledError:
+            failure = "The server stopped. Your saved answers are available to resume."
+            raise
+        except Exception:
+            failure = (
+                "The voice connection failed. Check your Deepgram configuration and try again."
+            )
+            logger.warning("Voice connection failed for session %s", session_id or "unverified")
+        finally:
+            if claimed:
+                self.active_sessions.discard(session_id)
+                session = self.store.get(session_id)
+                changes = {"call_status": "completed", "call_error": failure}
+                if session["status"] not in {"completed", "declined"}:
+                    changes["status"] = "interrupted"
+                self.store.update(session_id, **changes)
+                self.sync.wake.set()
+                call_log.info(
+                    "Media stream closed | check-in %s | %s",
+                    session_id,
+                    self.store.get(session_id)["status"],
+                )
+                if failure:
+                    logger.warning("%s", failure)
+            try:
+                await websocket.close()
