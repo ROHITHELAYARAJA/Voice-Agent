@@ -78,3 +78,22 @@ Logs carry local timestamps and labels: `[NGROK]`, `[TWILIO]`, `[DEEPGRAM]`, `[Y
 
 The Google tab stores one row per check-in with daily sections, detailed expense/income JSON, totals by currency, skipped sections, status, timestamps and call status. Each local revision updates the same reserved row using `RAW` input. Sheets failures leave the local record intact and retry with increasing delays, up to five minutes. `sync` requests an immediate retry. Pending and completed records are labeled separately.
 
+Keep `data/buddy.sqlite3` backed up with the Sheet. Do not reorder or delete its Sheet rows; sync checks row ownership and stops if the row was moved or replaced. This is a personal, single-process development application. The process and tunnel must stay running for calls and sync. Ngrok exposes only health and signed phone endpoints; no public call-control interface is served.
+
+## Verification
+
+```powershell
+uv run ruff check .
+uv run pytest -q
+uv run python run.py --doctor --live-check
+```
+
+Tests use simulated providers and temporary databases. They check question order, consent, confirmation, corrections, exact currency totals, persistence, tool replay, webhook authentication, outbound recipient restriction, interruptions, graceful audio playback, and duplicate-safe Sheets retry after a lost response. Live diagnostics check model availability and provider access without placing a phone call. They do not prove a full phone conversation or successful speech synthesis.
+
+## Sources and architecture
+
+Implementation follows the complete [Twilio and Deepgram Voice Agent guide](https://developers.deepgram.com/docs/twilio-and-deepgram-voice-agent), including bidirectional streams, mulaw 8 kHz audio and barge-in. The raw WebSocket bridge is an approach expressly described by that guide.
+
+Provider configuration is checked against [Deepgram LLM models](https://developers.deepgram.com/docs/voice-agent-llm-models), its [live model catalog](https://agent.deepgram.com/v1/agent/settings/think/models), [ElevenLabs integration settings](https://developers.deepgram.com/docs/voice-agent-tts-models), [function requests](https://developers.deepgram.com/docs/voice-agent-function-call-request), [Twilio stream messages](https://www.twilio.com/docs/voice/media-streams/websocket-messages), and [Google Sheets value updates](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/update).
+
+See `ARCHITECTURE.md` for the Archify-based implementation contract and ownership of each behavior.
