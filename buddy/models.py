@@ -33,3 +33,18 @@ class StrictModel(BaseModel):
 
 
 class MoneyEntry(StrictModel):
+    description: str = Field(min_length=1, max_length=300)
+    amount: Annotated[Decimal, Field(gt=0, le=Decimal("1000000000"), decimal_places=2)]
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    category: str = Field(default="Other", min_length=1, max_length=80)
+
+    @field_validator("description", "category")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Text cannot be blank")
+        return value.strip()
+
+
+class AnswerInput(StrictModel):
+    section: Section
