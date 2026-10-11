@@ -10,6 +10,7 @@ import uvicorn
 import websockets
 
 from buddy.bridge import DEEPGRAM_URL
+from buddy.excel import ExcelClient
 from buddy.logging import configure_logging
 from buddy.runtime import BuddyRuntime
 from buddy.sheets import IntegrationError, SheetsClient
@@ -30,13 +31,16 @@ def print_status(settings: Settings) -> None:
     logger.info("Timezone: %s | Currency: %s", settings.timezone, settings.currency)
     missing = settings.missing_call_settings()
     logger.info("Phone: %s", "ready" if not missing else "setup needed: " + ", ".join(missing))
-    missing = settings.missing_sheet_settings()
-    logger.info(
-        "Sheets: %s",
-        "configured; access is checked during sync"
-        if not missing
-        else "setup needed: " + ", ".join(missing),
-    )
+    if settings.sheet_backend == "excel":
+        logger.info("Storage: local Excel | %s | no Google credentials needed", settings.excel_path)
+    else:
+        missing = settings.missing_google_settings()
+        logger.info(
+            "Storage: Google Sheets | %s",
+            "configured; access is checked during sync"
+            if not missing
+            else "setup needed: " + ", ".join(missing),
+        )
 
 
 async def live_check(settings: Settings) -> bool:
@@ -129,7 +133,19 @@ async def live_check(settings: Settings) -> bool:
                     "Account check failed; inspect Twilio credentials"
                 )
                 ok = False
-        if not settings.missing_sheet_settings():
+        if settings.sheet_backend == "excel":
+            store = BuddyRuntime(settings)
+            try:
+                await ExcelClient(settings).initialize(store.store)
+                logging.getLogger("SHEETS").info(
+                    "Local Excel storage ready | %s", settings.excel_path
+                )
+            except IntegrationError as exc:
+                logging.getLogger("SHEETS").error("%s", exc)
+                ok = False
+            finally:
+                await store.http.aclose()
+        elif not settings.missing_google_settings():
             try:
                 await SheetsClient(settings, http).request(
                     "GET", params={"fields": "spreadsheetId"}
@@ -172,7 +188,7 @@ async def command(runtime: BuddyRuntime, line: str) -> bool:
             sessions = runtime.store.list_sessions(20)
             for session in sessions:
                 logger.info(
-                    "%s | %s | %s | call %s | Sheets %s",
+                    "%s | %s | %s | call %s | Spreadsheet %s",
                     session["id"],
                     session["checkin_date"],
                     session["status"],
