@@ -98,3 +98,34 @@ class Settings:
         return f"https://{parsed.netloc}"
 
     @property
+    def credentials_path(self) -> Path | None:
+        if not self.google_credentials_file:
+            return None
+        path = Path(self.google_credentials_file).expanduser()
+        return path if path.is_absolute() else ROOT / path
+
+    def missing_call_settings(self) -> list[str]:
+        missing = []
+        for name in ("deepgram_api_key", "twilio_account_sid", "twilio_auth_token"):
+            if not getattr(self, name):
+                missing.append(name.upper())
+        if self.tts_provider == "eleven_labs" and not self.elevenlabs_api_key:
+            missing.append("ELEVENLABS_API_KEY")
+        for name in ("twilio_phone_number", "owner_phone_number"):
+            if not re.fullmatch(r"\+[1-9]\d{7,14}", getattr(self, name)):
+                missing.append(name.upper())
+        if not self.public_url:
+            missing.append("PUBLIC_HOSTNAME")
+        if self.twilio_account_sid and not re.fullmatch(
+            r"AC[a-fA-F0-9]{32}", self.twilio_account_sid
+        ):
+            missing.append("TWILIO_ACCOUNT_SID (invalid format)")
+        return missing
+
+    def missing_sheet_settings(self) -> list[str]:
+        missing = []
+        if not re.fullmatch(r"[\w-]+", self.google_sheet_id):
+            missing.append("GOOGLE_SHEET_ID")
+        if not self.credentials_path or not self.credentials_path.is_file():
+            missing.append("GOOGLE_CREDENTIALS_FILE")
+        return missing
