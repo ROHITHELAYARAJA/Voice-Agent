@@ -178,3 +178,43 @@ class Store:
             db.execute("INSERT INTO sheet_rows VALUES (?, ?, ?)", (target, session_id, row_number))
         return row_number
 
+    def mark_synced(self, target: str, session_id: str, version: int) -> None:
+        with self.connection() as db:
+            db.execute(
+                "INSERT INTO sheet_sync VALUES (?, ?, ?) ON CONFLICT(target, session_id) DO UPDATE SET version = excluded.version",
+                (target, session_id, version),
+            )
+            db.execute(
+                "UPDATE sessions SET synced_version = ?, sync_error = NULL, sync_attempts = 0, next_sync_at = 0 WHERE id = ?",
+                (version, session_id),
+            )
+
+    def mark_sync_error(self, session_id: str, message: str, now: float) -> None:
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT sync_attempts FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+            attempts = row[0] + 1
+            db.execute(
+                "UPDATE sessions SET sync_error = ?, sync_attempts = ?, next_sync_at = ? WHERE id = ?",
+                (message, attempts, now + min(300, 2 ** min(attempts, 8)), session_id),
+            )
+
+    def retry_sync(self) -> None:
+        with self.connection() as db:
+            db.execute("UPDATE sessions SET next_sync_at = 0")
+
+    def synced_version(self, session_id: str, target: str) -> int:
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT version FROM sheet_sync WHERE session_id = ? AND target = ?",
+                (session_id, target),
+            ).fetchone()
+        return row[0] if row else 0
+
+    def recover_calls(self) -> None:
+        with self.connection() as db:
+            db.execute(
+                """
+                UPDATE sessions SET call_status = 'interrupted',
+                status = CASE WHEN status IN ('completed', 'declined') THEN status ELSE 'interrupted' END,
