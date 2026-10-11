@@ -78,3 +78,61 @@ async def test_full_call_relay_records_answers_and_waits_for_playback(settings):
                     {
                         "id": "complete",
                         "name": "complete_checkin",
+                        "arguments": '{"confirmed":true}',
+                        "client_side": True,
+                        "thought_signature": "test-signature",
+                    }
+                ],
+            }
+        )
+        agent.events.put_nowait(b"goodbye-audio")
+        agent.event(
+            {
+                "type": "FunctionCallRequest",
+                "functions": [
+                    {
+                        "id": "end",
+                        "name": "end_conversation",
+                        "arguments": "{}",
+                        "client_side": True,
+                    }
+                ],
+            }
+        )
+        agent.event({"type": "AgentAudioDone"})
+        await asyncio.wait_for(
+            runtime.bridge.relay(twilio, agent, session["id"], "MZ123"), timeout=5
+        )
+        assert runtime.checkin.state(session["id"])["status"] == "completed"
+        assert any(event["event"] == "clear" for event in twilio.sent)
+        assert twilio.sent[-1]["event"] == "mark"
+        assert all(event["streamSid"] == "MZ123" for event in twilio.sent)
+        responses = [
+            json.loads(message)
+            for message in agent.sent
+            if isinstance(message, str) and "FunctionCallResponse" in message
+        ]
+        assert len(responses) == 10
+        assert (
+            next(item for item in responses if item["id"] == "complete")["thought_signature"]
+            == "test-signature"
+        )
+        assert len(runtime.store.transcripts(session["id"])) == 1
+    finally:
+        await runtime.close()
+
+
+async def test_deepgram_error_stops_relay_without_hanging(settings):
+    runtime = BuddyRuntime(settings)
+    try:
+        session = runtime.new_session()
+        agent = FakeAgent()
+        agent.event({"type": "Error", "code": "INVALID_SETTINGS"})
+        import pytest
+
+        with pytest.raises(ValueError, match="rejected"):
+            await asyncio.wait_for(
+                runtime.bridge.relay(FakeTwilio(), agent, session["id"], "MZ123"), timeout=3
+            )
+    finally:
+        await runtime.close()
