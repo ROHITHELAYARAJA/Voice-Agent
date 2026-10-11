@@ -39,6 +39,43 @@ class IntegrationError(Exception):
     pass
 
 
+def checkin_row(session: dict, timezone: str) -> list:
+    answers = session["answers"]
+
+    def answer(section: str) -> str:
+        saved = answers.get(section, {})
+        text = saved.get("answer", "")
+        if (
+            section in {"spending", "income"}
+            and not saved.get("skipped")
+            and not saved.get("details_complete", True)
+        ):
+            text += " | Details incomplete; totals include confirmed exact amounts only."
+        return text
+
+    return [
+        session["id"],
+        session["checkin_date"],
+        session["status"],
+        answer("accomplishments"),
+        answer("learning"),
+        answer("spending"),
+        json.dumps(totals(session["expenses"])),
+        json.dumps(session["expenses"], ensure_ascii=False),
+        answer("income"),
+        json.dumps(totals(session["income"])),
+        json.dumps(session["income"], ensure_ascii=False),
+        answer("wellbeing"),
+        answer("tomorrow"),
+        answer("notes"),
+        ", ".join(key for key, value in answers.items() if value.get("skipped")),
+        timezone,
+        session["updated_at"],
+        session["call_status"],
+    ]
+
+
+
 class SheetsClient:
     def __init__(self, settings: Settings, http: httpx.AsyncClient):
         self.settings = settings
