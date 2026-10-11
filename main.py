@@ -98,3 +98,28 @@ def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = 
             url=settings.public_url.replace("https://", "wss://") + "/media"
         )
         stream.parameter(name="session_id", value=session_id)
+        stream.parameter(name="stream_token", value=session["stream_token"])
+        response.hangup()
+        return Response(str(response), media_type="application/xml")
+
+    @application.post("/call-status")
+    async def call_status(request: Request):
+        form = await verified_form(request)
+        try:
+            runtime.callback(request.query_params.get("session_id", ""), form)
+        except ValueError as exc:
+            raise HTTPException(403, str(exc)) from None
+        return Response(status_code=204)
+
+    @application.websocket("/media")
+    async def media(websocket: WebSocket):
+        signature = websocket.headers.get("x-twilio-signature", "")
+        validator = RequestValidator(settings.twilio_auth_token)
+        url = settings.public_url + "/media"
+        valid = bool(
+            settings.twilio_auth_token
+            and settings.deepgram_api_key
+            and settings.public_url
+            and not websocket.url.query
+            and (
+                validator.validate(url, {}, signature)
