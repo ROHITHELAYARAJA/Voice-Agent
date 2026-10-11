@@ -1,23 +1,25 @@
 [project]
 name = "voice-agent"
 version = "1.0.0"
-description = "Terminal daily check-in calls with Twilio, Deepgram, Gemini, ElevenLabs and Google Sheets"
+description = "Terminal daily check-in calls with Twilio, Deepgram and local Excel storage"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "deepgram-sdk>=7.12.0",
     "fastapi>=0.143.0",
-    "google-auth>=2.40,<3",
     "httpx>=0.28,<1",
     "ngrok>=1.4.0",
+    "openpyxl>=3.1.5,<4",
     "python-dotenv>=1.2.4",
     "python-multipart>=0.0.20",
-    "requests>=2.32,<3",
     "twilio>=9,<10",
     "tzdata>=2025.2",
     "uvicorn>=0.54.0",
     "websockets>=17.2",
 ]
+
+[project.optional-dependencies]
+google-sheets = ["google-auth>=2.40,<3", "requests>=2.32,<3"]
 
 [dependency-groups]
 dev = [
