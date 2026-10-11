@@ -22,11 +22,22 @@ class TwilioClient:
             ) from None
         if response.status_code >= 400:
             try:
-                code = response.json().get("code", response.status_code)
+                details = response.json()
             except ValueError:
-                code = response.status_code
+                details = {}
+            if not isinstance(details, dict):
+                details = {}
+            code = details.get("code", response.status_code)
+            message = str(details.get("message") or response.reason_phrase)
+            for secret in (
+                self.settings.twilio_auth_token,
+                self.settings.deepgram_api_key,
+                self.settings.elevenlabs_api_key,
+            ):
+                if secret:
+                    message = message.replace(secret, "[hidden]")
             raise IntegrationError(
-                f"Twilio rejected the request (code {code}). Check credentials, the caller number, and destination permissions."
+                f"Twilio rejected the request (HTTP {response.status_code}, code {code}): {message[:500]}"
             )
         return response.json()
 
