@@ -92,3 +92,41 @@ class ExcelClient:
         finally:
             if temporary and temporary.exists():
                 temporary.unlink()
+
+    def update(self, workbook, store: Store, session: dict):
+        from buddy.sheets import IntegrationError, checkin_row
+
+        sheet = workbook[CHECKINS_TAB]
+        matches = [
+            row[0].row
+            for row in sheet.iter_rows(min_row=2, max_col=1)
+            if row[0].value == session["id"]
+        ]
+        if len(matches) > 1:
+            raise IntegrationError(
+                "Duplicate check-in IDs in Excel. Remove the duplicate row and retry sync."
+            )
+        self.put_row(
+            sheet,
+            matches[0] if matches else sheet.max_row + 1,
+            checkin_row(session, self.settings.timezone),
+        )
+        log = workbook[LOG_TAB]
+        existing = {row[0].value for row in log.iter_rows(min_row=2, max_col=1)}
+        for entry in store.transcripts(session["id"]):
+            if entry["id"] not in existing:
+                self.put_row(
+                    log,
+                    log.max_row + 1,
+                    [
+                        entry["id"],
+                        session["id"],
+                        datetime.fromisoformat(entry["created_at"])
+                        .astimezone(ZoneInfo(self.settings.timezone))
+                        .isoformat(),
+                        entry["role"],
+                        entry["content"],
+                    ],
+                )
+        sheet.auto_filter.ref = sheet.dimensions
+        log.auto_filter.ref = log.dimensions
