@@ -75,6 +75,8 @@ async def test_outbound_only_calls_owner_and_prevents_second_call(settings):
     requests = []
 
     def handler(request):
+        if request.method == "GET":
+            return httpx.Response(200, json={"type": "Full"})
         requests.append(parse_qs(request.content.decode()))
         return httpx.Response(201, json={"sid": "CA123", "status": "queued"})
 
@@ -117,3 +119,87 @@ def test_stream_token_and_call_binding(settings):
     import asyncio
 
     asyncio.run(runtime.close())
+
+
+async def test_trial_uses_only_basic_fields_and_polls_terminal_status(settings, caplog):
+    requests = []
+    call_status = "queued"
+
+    def handler(request):
+        if request.url.path.endswith(f"/{settings.twilio_account_sid}.json"):
+            return httpx.Response(200, json={"type": "Trial"})
+        if request.method == "GET":
+            return httpx.Response(200, json={"sid": "CA123", "status": call_status})
+        requests.append(parse_qs(request.content.decode()))
+        return httpx.Response(201, json={"sid": "CA123", "status": "queued"})
+
+    runtime = BuddyRuntime(settings)
+    await runtime.http.aclose()
+    runtime.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    runtime.telephony.http = runtime.http
+    try:
+        session = await runtime.start_call()
+        assert requests == [
+            {
+                "To": [settings.owner_phone_number],
+                "From": [settings.twilio_phone_number],
+                "Url": [f"{settings.public_url}/twiml?session_id={session['id']}"],
+            }
+        ]
+        assert "trial rules block Media Streams" in caplog.text
+        version = session["version"]
+        await runtime.refresh_call()
+        assert runtime.store.get(session["id"])["version"] == version
+        call_status = "ringing"
+        await runtime.refresh_call()
+        assert runtime.active_call()["call_status"] == "ringing"
+        call_status = "queued"
+        await runtime.refresh_call()
+        assert runtime.active_call()["call_status"] == "ringing"
+        call_status = "no-answer"
+        await runtime.refresh_call()
+        assert runtime.active_call() is None
+        assert runtime.store.get(session["id"])["status"] == "interrupted"
+        await runtime.start_call()
+        assert len(requests) == 2
+    finally:
+        await runtime.close()
+
+
+async def test_twilio_error_preserves_code_zero_and_hides_secrets(settings):
+    from buddy.telephony import TwilioClient
+
+    def handler(request):
+        return httpx.Response(
+            400,
+            json={
+                "code": 0,
+                "message": "Invalid or disallowed parameters - " + settings.twilio_auth_token,
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(IntegrationError) as error:
+            await TwilioClient(settings, http).request("Calls.json", {})
+        message = str(error.value)
+        assert "HTTP 400, code 0" in message
+        assert "Invalid or disallowed parameters" in message
+        assert "[hidden]" in message
+        assert settings.twilio_auth_token not in message
+
+
+async def test_call_creation_does_not_retry_on_lost_response(settings):
+    from buddy.telephony import TwilioClient
+
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        raise httpx.ReadTimeout("Lost response", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = TwilioClient(settings, http)
+        client.account_type = "Trial"
+        with pytest.raises(IntegrationError, match="Check the call status"):
+            await client.call_owner("checkin-1")
+    assert len(requests) == 1

@@ -38,7 +38,9 @@ Google Sheets is an optional integration: install it with `uv sync --extra googl
 
 Defaults: English, `Asia/Kolkata`, INR, your name Rohith, a 15-minute call limit and a 120-second conversation silence limit. Change them in `.env`. `.env.example` lists all available settings. Jessica availability depends on your ElevenLabs account; the live diagnostic checks the configured voice instead of silently choosing another one.
 
-Twilio accounts on a trial may require your destination number to be verified. Enable calling to your destination country in Twilio's geographic permissions. A call error reports its Twilio error code. Calls and provider usage are billed by your provider accounts.
+Buddy checks the Twilio account type before dialing. Trial accounts use only `To`, `From` and `Url`; optional call parameters can cause HTTP 400 with error code 0. Full accounts retain status callbacks, ringing timeout and a call time limit. Buddy also checks active call status every three seconds, so an unanswered trial call releases the call slot and updates Excel. Call errors include the HTTP status, Twilio code and provider message. A rejected initial call leaves Buddy and ngrok online for terminal commands.
+
+Twilio's [current trial rules](https://www.twilio.com/docs/usage/trials/try-out-voice#blocked-verbs) block `<Stream>`, which this phone-to-Deepgram pipeline requires. A trial call can be accepted and ring without connecting the AI conversation. Buddy warns before trial calls, and `--doctor --live-check` reports this limitation. A Twilio account with Media Streams enabled is required for the complete phone conversation; changing API keys or Python dependencies cannot enable a blocked account feature. Verify your destination number for trial calls and check geographic permissions. Calls and provider usage are subject to your provider accounts' credits and pricing.
 
 ## Terminal commands
 

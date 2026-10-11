@@ -33,6 +33,7 @@ class BuddyRuntime:
         self.bridge = VoiceBridge(settings, self.store, self.checkin, self.sheets)
         self.call_lock = asyncio.Lock()
         self.worker = None
+        self.call_worker = None
 
     async def start(self) -> None:
         self.store.recover_calls()
@@ -43,19 +44,51 @@ class BuddyRuntime:
             except IntegrationError as exc:
                 logging.getLogger("SHEETS").warning("%s", exc)
         self.worker = asyncio.create_task(self.sheets.run())
+        self.call_worker = asyncio.create_task(self.watch_calls())
 
     async def close(self) -> None:
+        if self.call_worker:
+            self.call_worker.cancel()
+            await asyncio.gather(self.call_worker, return_exceptions=True)
         active = self.active_call()
         if active and active["call_sid"]:
             try:
                 await self.hangup()
-            except IntegrationError:
-                logger.warning("Could not confirm call termination. Check the call in Twilio.")
+            except IntegrationError as exc:
+                logger.warning(
+                    "Could not confirm call termination. Check the call in Twilio: %s", exc
+                )
         if self.worker:
             self.worker.cancel()
             await asyncio.gather(self.worker, return_exceptions=True)
         await self.sheets.flush()
         await self.http.aclose()
+
+    async def refresh_call(self) -> None:
+        session = self.active_call()
+        if not session or not session["call_sid"]:
+            return
+        result = await self.telephony.get_call(session["call_sid"])
+        self.callback(
+            session["id"],
+            {
+                "CallSid": result.get("sid"),
+                "CallStatus": result.get("status"),
+            },
+        )
+
+    async def watch_calls(self) -> None:
+        previous_error = None
+        while True:
+            await asyncio.sleep(3)
+            try:
+                await self.refresh_call()
+                previous_error = None
+            except (IntegrationError, ValueError) as exc:
+                message = str(exc)
+                if message != previous_error:
+                    logger.warning("Call status check failed; retrying: %s", message)
+                previous_error = message
 
     def new_session(self) -> dict:
         return self.store.create(datetime.now(ZoneInfo(self.settings.timezone)).date().isoformat())
@@ -92,6 +125,7 @@ class BuddyRuntime:
                 self.store.update(session["id"], **changes)
             except IntegrationError as exc:
                 self.store.update(session["id"], call_status="failed", call_error=str(exc))
+                self.sheets.wake.set()
                 logger.error("%s", exc)
                 raise
             self.sheets.wake.set()
@@ -141,8 +175,10 @@ class BuddyRuntime:
         terminal = {"completed", "busy", "failed", "no-answer", "canceled", "interrupted"}
         if value not in active and value not in terminal:
             raise ValueError("Unknown call status")
-        if session["call_status"] in terminal or (
-            value in active and active[value] < active.get(session["call_status"], 0)
+        if (
+            session["call_status"] == value
+            or session["call_status"] in terminal
+            or (value in active and active[value] < active.get(session["call_status"], 0))
         ):
             return
         changes = {"call_status": value}

@@ -14,6 +14,7 @@ from buddy.excel import ExcelClient
 from buddy.logging import configure_logging
 from buddy.runtime import BuddyRuntime
 from buddy.sheets import IntegrationError, SheetsClient
+from buddy.telephony import TwilioClient
 from config import Settings
 from main import create_app
 from tunnel import start_tunnel_async
@@ -30,7 +31,9 @@ def print_status(settings: Settings) -> None:
     )
     logger.info("Timezone: %s | Currency: %s", settings.timezone, settings.currency)
     missing = settings.missing_call_settings()
-    logger.info("Phone: %s", "ready" if not missing else "setup needed: " + ", ".join(missing))
+    logger.info(
+        "Phone settings: %s", "ready" if not missing else "setup needed: " + ", ".join(missing)
+    )
     if settings.sheet_backend == "excel":
         logger.info("Storage: local Excel | %s | no Google credentials needed", settings.excel_path)
     else:
@@ -122,16 +125,15 @@ async def live_check(settings: Settings) -> bool:
             ok = False
         if settings.twilio_account_sid and settings.twilio_auth_token:
             try:
-                response = await http.get(
-                    f"https://api.twilio.com/2010-04-01/Accounts/{settings.twilio_account_sid}.json",
-                    auth=(settings.twilio_account_sid, settings.twilio_auth_token),
-                )
-                response.raise_for_status()
-                logging.getLogger("TWILIO").info("Account credentials accepted")
-            except httpx.HTTPError:
-                logging.getLogger("TWILIO").error(
-                    "Account check failed; inspect Twilio credentials"
-                )
+                account_type = await TwilioClient(settings, http).check_account()
+                logging.getLogger("TWILIO").info("Account credentials accepted | %s", account_type)
+                if account_type == "Trial":
+                    logging.getLogger("TWILIO").warning(
+                        "Buddy phone audio requires Media Streams, which Twilio's current trial rules block. See https://www.twilio.com/docs/usage/trials/try-out-voice#blocked-verbs"
+                    )
+                    ok = False
+            except IntegrationError as exc:
+                logging.getLogger("TWILIO").error("Account check failed: %s", exc)
                 ok = False
         if settings.sheet_backend == "excel":
             store = BuddyRuntime(settings)

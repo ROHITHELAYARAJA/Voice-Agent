@@ -1,18 +1,25 @@
+import logging
+
 import httpx
 
 from buddy.sheets import IntegrationError
 from config import Settings
+
+logger = logging.getLogger("TWILIO")
 
 
 class TwilioClient:
     def __init__(self, settings: Settings, http: httpx.AsyncClient):
         self.settings = settings
         self.http = http
+        self.account_type = None
 
-    async def request(self, path: str, data: dict) -> dict:
+    async def request(self, path: str, data: dict | None = None, method: str = "POST") -> dict:
+        account = f"https://api.twilio.com/2010-04-01/Accounts/{self.settings.twilio_account_sid}"
         try:
-            response = await self.http.post(
-                f"https://api.twilio.com/2010-04-01/Accounts/{self.settings.twilio_account_sid}/{path}",
+            response = await self.http.request(
+                method,
+                f"{account}/{path}" if path else f"{account}.json",
                 auth=(self.settings.twilio_account_sid, self.settings.twilio_auth_token),
                 data=data,
             )
@@ -39,24 +46,61 @@ class TwilioClient:
             raise IntegrationError(
                 f"Twilio rejected the request (HTTP {response.status_code}, code {code}): {message[:500]}"
             )
-        return response.json()
+        try:
+            result = response.json()
+        except ValueError:
+            raise IntegrationError(
+                "Twilio returned an unreadable response. Check the call status before retrying."
+            ) from None
+        if not isinstance(result, dict):
+            raise IntegrationError(
+                "Twilio returned an unexpected response. Check the call status before retrying."
+            )
+        return result
+
+    async def check_account(self) -> str:
+        result = await self.request("", method="GET")
+        account_type = result.get("type")
+        if account_type not in {"Trial", "Full"}:
+            raise IntegrationError(
+                "Twilio did not return a supported account type. Check your account in Twilio Console."
+            )
+        self.account_type = account_type
+        return account_type
 
     async def call_owner(self, session_id: str) -> dict:
+        if self.account_type is None:
+            await self.check_account()
         base = self.settings.public_url
-        return await self.request(
-            "Calls.json",
-            {
-                "To": self.settings.owner_phone_number,
-                "From": self.settings.twilio_phone_number,
-                "Url": f"{base}/twiml?session_id={session_id}",
-                "Method": "POST",
-                "StatusCallback": f"{base}/call-status?session_id={session_id}",
-                "StatusCallbackMethod": "POST",
-                "StatusCallbackEvent": ["initiated", "ringing", "answered", "completed"],
-                "Timeout": "30",
-                "TimeLimit": str(self.settings.max_call_seconds),
-            },
-        )
+        data = {
+            "To": self.settings.owner_phone_number,
+            "From": self.settings.twilio_phone_number,
+            "Url": f"{base}/twiml?session_id={session_id}",
+        }
+        if self.account_type == "Trial":
+            logger.warning(
+                "Trial account: using the basic call request. Twilio's current trial rules block Media Streams; the phone may ring without connecting Buddy to Deepgram. See https://www.twilio.com/docs/usage/trials/try-out-voice#blocked-verbs"
+            )
+        else:
+            data.update(
+                {
+                    "Method": "POST",
+                    "StatusCallback": f"{base}/call-status?session_id={session_id}",
+                    "StatusCallbackMethod": "POST",
+                    "StatusCallbackEvent": ["initiated", "ringing", "answered", "completed"],
+                    "Timeout": "30",
+                    "TimeLimit": str(self.settings.max_call_seconds),
+                }
+            )
+        result = await self.request("Calls.json", data)
+        if not isinstance(result.get("sid"), str) or not result["sid"]:
+            raise IntegrationError(
+                "Twilio did not return a call ID. Check the call status before retrying."
+            )
+        return result
+
+    async def get_call(self, call_sid: str) -> dict:
+        return await self.request(f"Calls/{call_sid}.json", method="GET")
 
     async def hangup(self, call_sid: str) -> None:
         await self.request(f"Calls/{call_sid}.json", {"Status": "completed"})
