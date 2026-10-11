@@ -28,3 +28,33 @@ class Store:
                     sync_error TEXT, sync_attempts INTEGER NOT NULL DEFAULT 0,
                     next_sync_at REAL NOT NULL DEFAULT 0, call_error TEXT
                 );
+                CREATE TABLE IF NOT EXISTS tool_results (
+                    session_id TEXT NOT NULL, function_id TEXT NOT NULL, result TEXT NOT NULL,
+                    PRIMARY KEY(session_id, function_id)
+                );
+                CREATE TABLE IF NOT EXISTS sheet_rows (
+                    target TEXT NOT NULL, session_id TEXT NOT NULL, row_number INTEGER NOT NULL,
+                    PRIMARY KEY(target, session_id), UNIQUE(target, row_number)
+                );
+                CREATE TABLE IF NOT EXISTS sheet_sync (
+                    target TEXT NOT NULL, session_id TEXT NOT NULL, version INTEGER NOT NULL,
+                    PRIMARY KEY(target, session_id)
+                );
+                CREATE TABLE IF NOT EXISTS transcripts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+                    role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+            """)
+
+    @contextmanager
+    def connection(self):
+        db = sqlite3.connect(self.path, timeout=10)
+        db.row_factory = sqlite3.Row
+        try:
+            yield db
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        finally:
+            db.close()
