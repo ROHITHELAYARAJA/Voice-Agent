@@ -28,3 +28,33 @@ HEADERS = [
     "Wellbeing",
     "Tomorrow",
     "Notes",
+    "Skipped sections",
+    "Timezone",
+    "Updated at",
+    "Call status",
+]
+
+
+class IntegrationError(Exception):
+    pass
+
+
+class SheetsClient:
+    def __init__(self, settings: Settings, http: httpx.AsyncClient):
+        self.settings = settings
+        self.http = http
+        self.credentials = None
+        self.initialized = False
+
+    @property
+    def target(self) -> str:
+        return f"{self.settings.google_sheet_id}:{self.settings.google_sheet_tab}"
+
+    @property
+    def base_url(self) -> str:
+        return f"https://sheets.googleapis.com/v4/spreadsheets/{self.settings.google_sheet_id}"
+
+    def refresh_credentials(self) -> str:
+        if self.credentials is None:
+            self.credentials, _ = google.auth.load_credentials_from_file(
+                str(self.settings.credentials_path),
