@@ -118,3 +118,13 @@ class CheckinService:
             else:
                 raise ValueError("Unknown function")
             result = {"ok": True, **result}
+            self.store.cache_tool(session_id, function_id, result)
+            return result
+        except ValidationError as exc:
+            return {
+                "ok": False,
+                "error": "; ".join(error["msg"] for error in exc.errors(include_input=False)),
+                "state": self.state(session_id),
+            }
+        except (ValueError, TypeError) as exc:
+            return {"ok": False, "error": str(exc)[:300], "state": self.state(session_id)}
