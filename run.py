@@ -198,3 +198,147 @@ async def command(runtime: BuddyRuntime, line: str) -> bool:
     except (IntegrationError, KeyError, ValueError) as exc:
         logger.error("%s", str(exc))
     return True
+
+
+async def console(runtime: BuddyRuntime, server: uvicorn.Server) -> None:
+    queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def read_input():
+        while not server.should_exit:
+            try:
+                line = input()
+            except (EOFError, OSError):
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+                return
+            loop.call_soon_threadsafe(queue.put_nowait, line)
+            if line.strip().lower() in {"quit", "exit"}:
+                return
+
+    threading.Thread(target=read_input, daemon=True, name="buddy-console").start()
+    help_commands()
+    while not server.should_exit:
+        line = await queue.get()
+        if line is None:
+            logger.info("Terminal input closed; the bridge stays online until Ctrl+C")
+            await asyncio.Future()
+        if not await command(runtime, line):
+            server.should_exit = True
+            return
+
+
+async def serve(settings: Settings, args) -> int:
+    runtime = BuddyRuntime(settings)
+    server = uvicorn.Server(
+        uvicorn.Config(
+            create_app(settings, runtime),
+            host="127.0.0.1",
+            port=settings.port,
+            proxy_headers=False,
+            ws_max_size=65536,
+            access_log=False,
+            log_config=None,
+        )
+    )
+    server_task = asyncio.create_task(server.serve())
+    tunnel = None
+    console_task = None
+    try:
+        async with asyncio.timeout(15):
+            while not server.started:
+                if server_task.done():
+                    await server_task
+                    raise IntegrationError(
+                        "The server could not start. Check whether its port is already in use."
+                    )
+                await asyncio.sleep(0.05)
+        if not args.no_tunnel:
+            tunnel = await start_tunnel_async(settings.port, args.domain)
+            settings.public_hostname = tunnel["url"]
+            logging.getLogger("NGROK").info(
+                "Connected | %s → 127.0.0.1:%s", tunnel["url"], settings.port
+            )
+            logging.getLogger("NGROK").info("Incoming-call webhook: %s/twiml", settings.public_url)
+        print_status(settings)
+        if args.call or args.resume:
+            await runtime.start_call(args.resume)
+        if not args.non_interactive:
+            console_task = asyncio.create_task(console(runtime, server))
+        await server_task
+        return 0
+    except (IntegrationError, TimeoutError) as exc:
+        logger.error("%s", str(exc) or "Startup timed out")
+        return 1
+    finally:
+        server.should_exit = True
+        if console_task:
+            console_task.cancel()
+            await asyncio.gather(console_task, return_exceptions=True)
+        if not server_task.done():
+            await server_task
+        if tunnel:
+            await tunnel["forwarder"].close()
+            logging.getLogger("NGROK").info("Tunnel closed")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Buddy terminal voice check-ins: ngrok + Twilio + Deepgram + Google Sheets"
+    )
+    parser.add_argument(
+        "--call", action="store_true", help="Call your configured number after startup"
+    )
+    parser.add_argument(
+        "--resume", metavar="CHECKIN_ID", help="Call and resume an unfinished check-in"
+    )
+    parser.add_argument(
+        "--no-tunnel",
+        action="store_true",
+        help="Use an already running PUBLIC_HOSTNAME instead of opening ngrok",
+    )
+    parser.add_argument("--domain", help="Optional reserved ngrok domain")
+    parser.add_argument(
+        "--non-interactive", action="store_true", help="Run with logs and no command prompt"
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Check configuration without starting a server or placing a call",
+    )
+    parser.add_argument(
+        "--live-check",
+        action="store_true",
+        help="With --doctor, verify provider access without placing a call",
+    )
+    args = parser.parse_args()
+    if args.call and args.resume:
+        parser.error("Choose --call or --resume, not both")
+    if args.live_check and not args.doctor:
+        parser.error("--live-check requires --doctor")
+    try:
+        settings = Settings.from_env()
+        configure_logging(settings.timezone)
+        if args.doctor:
+            print_status(settings)
+            live_ok = asyncio.run(live_check(settings)) if args.live_check else True
+            return (
+                0
+                if not settings.missing_call_settings()
+                and not settings.missing_sheet_settings()
+                and live_ok
+                else 1
+            )
+        return asyncio.run(serve(settings, args))
+    except KeyboardInterrupt:
+        logger.info("Buddy stopped. Saved check-ins remain on disk.")
+        return 0
+    except Exception as exc:
+        logger.error(
+            "Startup failed (%s). Check configuration, the network and ngrok account access.",
+            type(exc).__name__,
+        )
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
