@@ -169,6 +169,7 @@ class VoiceBridge:
                     self.store.transcript(
                         session_id, event.get("role", "unknown"), event.get("content", "")
                     )
+                    self.sync.wake.set()
                     logging.getLogger("YOU" if event.get("role") == "user" else "BUDDY").info(
                         "%s", event.get("content", "")
                     )
@@ -201,7 +202,7 @@ class VoiceBridge:
                             "complete_checkin",
                         }:
                             logging.getLogger("SAVE").info(
-                                "Answer saved locally | next: %s | Sheets: %s",
+                                "Answer saved locally | next: %s | Spreadsheet: %s",
                                 result.get("next_section") or "complete",
                                 result.get("sheets_status"),
                             )
