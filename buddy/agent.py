@@ -73,3 +73,28 @@ def build_agent_settings(settings: Settings, state: dict) -> dict:
         currency=settings.currency,
         state=json.dumps(state, ensure_ascii=False),
     )
+    if state["next_section"] == "consent":
+        greeting = f"Hi {settings.owner_name}, it's Buddy, your AI check-in companion. I'll save your answers for you. Is now a good time for a short daily check-in?"
+    else:
+        greeting = f"Hi {settings.owner_name}, it's Buddy. Your earlier answers are saved. Is now a good time to continue?"
+        prompt += "\nThis is a resumed call. Ask fresh permission before continuing. If yes, use get_checkin_state and resume the next question without overwriting existing consent."
+    speak = {"type": settings.tts_provider}
+    if settings.tts_provider == "eleven_labs":
+        speak.update(model_id=settings.tts_model, language_code="en-US")
+    else:
+        speak["model"] = settings.tts_model
+    return {
+        "type": "Settings",
+        "audio": {
+            "input": {"encoding": "mulaw", "sample_rate": 8000},
+            "output": {"encoding": "mulaw", "sample_rate": 8000, "container": "none"},
+        },
+        "agent": {
+            "language": "en",
+            "listen": {
+                "provider": {"type": "deepgram", "version": "v2", "model": "flux-general-en"}
+            },
+            "think": {
+                "provider": {
+                    "type": settings.llm_provider,
+                    "model": settings.llm_model,
