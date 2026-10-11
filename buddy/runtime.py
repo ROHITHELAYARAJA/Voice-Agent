@@ -8,6 +8,7 @@ import httpx
 
 from buddy.bridge import VoiceBridge
 from buddy.checkin import CheckinService
+from buddy.excel import ExcelClient
 from buddy.sheets import IntegrationError, SheetsClient, SheetsSync
 from buddy.storage import Store
 from buddy.telephony import TwilioClient
@@ -24,7 +25,13 @@ class BuddyRuntime:
             self.store, f"{settings.google_sheet_id}:{settings.google_sheet_tab}"
         )
         self.http = httpx.AsyncClient(timeout=20)
-        self.sheets = SheetsSync(self.store, SheetsClient(settings, self.http))
+        client = (
+            ExcelClient(settings)
+            if settings.sheet_backend == "excel"
+            else SheetsClient(settings, self.http)
+        )
+        self.checkin = CheckinService(self.store, client.target, settings.sheet_backend)
+        self.sheets = SheetsSync(self.store, client)
         self.telephony = TwilioClient(settings, self.http)
         self.bridge = VoiceBridge(settings, self.store, self.checkin, self.sheets)
         self.call_lock = asyncio.Lock()
