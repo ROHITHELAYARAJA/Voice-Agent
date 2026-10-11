@@ -48,3 +48,28 @@ def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = 
             settings.public_url
             + request.url.path
             + (f"?{request.url.query}" if request.url.query else "")
+        )
+        if not RequestValidator(settings.twilio_auth_token).validate(
+            url, form, request.headers.get("x-twilio-signature", "")
+        ):
+            raise HTTPException(403, "Invalid Twilio signature.")
+        if form.get("AccountSid") != settings.twilio_account_sid:
+            raise HTTPException(403, "Twilio account mismatch.")
+        return form
+
+    @application.exception_handler(KeyError)
+    async def not_found(request: Request, exc: KeyError):
+        return Response(
+            content='{"detail":"Check-in not found."}',
+            status_code=404,
+            media_type="application/json",
+        )
+
+    @application.get("/health")
+    async def health():
+        return {"status": "online", "service": "Buddy"}
+
+    @application.post("/twiml")
+    async def twiml(request: Request):
+        form = await verified_form(request)
+        session_id = request.query_params.get("session_id")
