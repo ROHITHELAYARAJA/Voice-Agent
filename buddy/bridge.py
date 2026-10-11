@@ -198,3 +198,43 @@ class VoiceBridge:
                         self.sync.wake.set()
                         if result.get("ok") and function.get("name") in {
                             "record_answer",
+                            "complete_checkin",
+                        }:
+                            logging.getLogger("SAVE").info(
+                                "Answer saved locally | next: %s | Sheets: %s",
+                                result.get("next_section") or "complete",
+                                result.get("sheets_status"),
+                            )
+                        elif not result.get("ok"):
+                            logging.getLogger("SAVE").warning(
+                                "Answer needs attention | %s", result.get("error", "Tool failed")
+                            )
+                        if result.get("end_call"):
+                            end_requested = True
+                            end_requested_at = time.monotonic()
+                elif kind == "Error":
+                    logger.warning(
+                        "Deepgram rejected the voice session (%s)", event.get("code", "unknown")
+                    )
+                    raise ValueError("Deepgram voice session rejected")
+            finished.set()
+
+        async def from_twilio() -> None:
+            while not finished.is_set():
+                event = json.loads(await twilio.receive_text())
+                kind = event.get("event")
+                if kind == "media":
+                    await asyncio.wait_for(settings_ready.wait(), timeout=20)
+                    media = event.get("media", {})
+                    if media.get("track", "inbound") == "inbound":
+                        payload = base64.b64decode(media["payload"], validate=True)
+                        if len(payload) > 16000:
+                            raise ValueError("Oversized media frame")
+                        await agent.send(payload)
+                elif (
+                    kind == "mark"
+                    and final_mark
+                    and event.get("mark", {}).get("name") == final_mark
+                ):
+                    finished.set()
+                elif kind == "stop":
