@@ -98,3 +98,24 @@ def build_agent_settings(settings: Settings, state: dict) -> dict:
                 "provider": {
                     "type": settings.llm_provider,
                     "model": settings.llm_model,
+                    "temperature": 0.3,
+                },
+                "prompt": prompt,
+                "functions": functions(),
+            },
+            "speak": {
+                "provider": speak,
+                **(
+                    {
+                        "endpoint": {
+                            "url": f"wss://api.elevenlabs.io/v1/text-to-speech/{settings.tts_voice}/multi-stream-input",
+                            "headers": {"xi-api-key": settings.elevenlabs_api_key},
+                        }
+                    }
+                    if settings.tts_provider == "eleven_labs"
+                    else {}
+                ),
+            },
+            "greeting": greeting,
+        },
+    }
