@@ -73,3 +73,28 @@ class Settings:
         if not 60 <= settings.max_call_seconds <= 3600:
             raise ValueError("MAX_CALL_SECONDS must be between 60 and 3600")
         if not 30 <= settings.silence_timeout_seconds <= 600:
+            raise ValueError("SILENCE_TIMEOUT_SECONDS must be between 30 and 600")
+        if not re.fullmatch(r"[A-Z]{3}", settings.currency):
+            raise ValueError("CURRENCY must be a three-letter uppercase code")
+        if not settings.google_sheet_tab or any(c in settings.google_sheet_tab for c in "[]:*?/\\"):
+            raise ValueError("GOOGLE_SHEET_TAB must be a valid sheet title")
+        return settings
+
+    @property
+    def public_url(self) -> str:
+        value = self.public_hostname.strip().rstrip("/")
+        if not value:
+            return ""
+        parsed = urlparse(value if "://" in value else f"https://{value}")
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            return ""
+        if (
+            parsed.path
+            or parsed.query
+            or parsed.fragment
+            or parsed.hostname in {"localhost", "127.0.0.1"}
+        ):
+            return ""
+        return f"https://{parsed.netloc}"
+
+    @property
