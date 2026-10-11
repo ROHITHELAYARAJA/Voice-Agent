@@ -1,160 +1,146 @@
-import asyncio
-import base64
-import json
+from contextlib import asynccontextmanager
+
 import uvicorn
-import websockets
-from fastapi import FastAPI, Request, Response, WebSocket
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
+from twilio.request_validator import RequestValidator
+from twilio.twiml.voice_response import VoiceResponse
 
-from config import (
-    AGENT_SETTINGS,
-    DEEPGRAM_API_KEY,
-    DEEPGRAM_WS_URL,
-    PORT,
-    PUBLIC_HOSTNAME,
-)
-
-app = FastAPI(title="Voice-Agent")
+from buddy.logging import configure_logging
+from buddy.runtime import BuddyRuntime
+from config import Settings
 
 
-def sts_connect():
-    if not DEEPGRAM_API_KEY:
-        raise ValueError("DEEPGRAM_API_KEY not found in environment")
+def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = None) -> FastAPI:
+    settings = settings or Settings.from_env()
+    runtime = runtime or BuddyRuntime(settings)
 
-    return websockets.connect(
-        DEEPGRAM_WS_URL,
-        subprotocols=["token", DEEPGRAM_API_KEY],
-        open_timeout=30,
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        await runtime.start()
+        try:
+            yield
+        finally:
+            await runtime.close()
+
+    application = FastAPI(
+        title="Buddy voice bridge",
+        version="1.0.0",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
+    application.state.runtime = runtime
 
+    async def verified_form(request: Request):
+        if not settings.twilio_auth_token or not settings.public_url:
+            raise HTTPException(503, "Phone integration is not configured.")
+        if (
+            request.headers.get("content-type", "").split(";")[0]
+            != "application/x-www-form-urlencoded"
+        ):
+            raise HTTPException(415, "Expected a Twilio form request.")
+        body = await request.body()
+        if len(body) > 16384:
+            raise HTTPException(413, "Request is too large.")
+        form = await request.form()
+        url = (
+            settings.public_url
+            + request.url.path
+            + (f"?{request.url.query}" if request.url.query else "")
+        )
+        if not RequestValidator(settings.twilio_auth_token).validate(
+            url, form, request.headers.get("x-twilio-signature", "")
+        ):
+            raise HTTPException(403, "Invalid Twilio signature.")
+        if form.get("AccountSid") != settings.twilio_account_sid:
+            raise HTTPException(403, "Twilio account mismatch.")
+        return form
 
-def execute_function(name: str, raw_arguments: str) -> str:
-    try:
-        args = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
-    except Exception:
-        args = {}
-
-    if name == "arithmetic":
-        operation = args.get("operation", "add")
-        a = float(args.get("a", 0))
-        b = float(args.get("b", 0))
-
-        if operation == "add":
-            return str(a + b)
-        elif operation == "subtract":
-            return str(a - b)
-        elif operation == "multiply":
-            return str(a * b)
-        elif operation == "divide":
-            return str(a / b) if b != 0 else "Cannot divide by zero"
-        return "Unknown operation"
-
-    elif name == "end_conversation":
-        return "Call ended successfully"
-
-    return "Executed"
-
-
-async def agent_to_twilio(twilio_ws: WebSocket, agent_ws, stream_sid_box: dict) -> None:
-    try:
-        while True:
-            message = await agent_ws.recv()
-            sid = stream_sid_box.get("sid")
-
-            if isinstance(message, bytes):
-                payload = base64.b64encode(message).decode("utf-8")
-                await twilio_ws.send_text(
-                    json.dumps({
-                        "event": "media",
-                        "streamSid": sid,
-                        "media": {"payload": payload},
-                    })
-                )
-            else:
-                data = json.loads(message)
-                event_type = data.get("type")
-
-                if event_type == "UserStartedSpeaking":
-                    await twilio_ws.send_text(
-                        json.dumps({
-                            "event": "clear",
-                            "streamSid": sid,
-                        })
-                    )
-                elif event_type == "ConversationText":
-                    role = data.get("role", "unknown")
-                    content = data.get("content", "")
-                    print(f"[{role}] {content}")
-                elif event_type == "FunctionCallRequest":
-                    for fn in data.get("functions", []):
-                        fn_id = fn.get("id")
-                        fn_name = fn.get("name")
-                        fn_args = fn.get("arguments", "{}")
-                        output = execute_function(fn_name, fn_args)
-                        await agent_ws.send(
-                            json.dumps({
-                                "type": "FunctionCallResponse",
-                                "id": fn_id,
-                                "name": fn_name,
-                                "content": output,
-                            })
-                        )
-    except (websockets.exceptions.ConnectionClosed, asyncio.CancelledError):
-        pass
-
-
-@app.get("/")
-async def root():
-    return {
-        "status": "online",
-        "service": "Twilio-Deepgram Voice Agent",
-        "public_host": PUBLIC_HOSTNAME,
-        "llm": "Google Gemini 2.5 Flash",
-        "tts": "ElevenLabs (Jessica)",
-        "stt": "Deepgram Flux",
-    }
-
-
-@app.post("/twiml")
-async def twiml(request: Request) -> Response:
-    host = PUBLIC_HOSTNAME.replace("https://", "").replace("http://", "").strip("/")
-    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Connect>
-    <Stream url="wss://{host}/media" />
-  </Connect>
-</Response>"""
-    return Response(content=xml, media_type="application/xml")
-
-
-@app.websocket("/media")
-async def media(twilio_ws: WebSocket) -> None:
-    await twilio_ws.accept()
-    stream_sid_box: dict = {}
-
-    async with sts_connect() as agent_ws:
-        relay_task = asyncio.create_task(
-            agent_to_twilio(twilio_ws, agent_ws, stream_sid_box)
+    @application.exception_handler(KeyError)
+    async def not_found(request: Request, exc: KeyError):
+        return Response(
+            content='{"detail":"Check-in not found."}',
+            status_code=404,
+            media_type="application/json",
         )
 
-        try:
-            while True:
-                raw = await twilio_ws.receive_text()
-                msg = json.loads(raw)
-                event = msg.get("event")
+    @application.get("/health")
+    async def health():
+        return {"status": "online", "service": "Buddy"}
 
-                if event == "start":
-                    stream_sid_box["sid"] = msg["start"]["streamSid"]
-                    await agent_ws.send(json.dumps(AGENT_SETTINGS))
-                elif event == "media":
-                    payload = base64.b64decode(msg["media"]["payload"])
-                    await agent_ws.send(payload)
-                elif event == "stop":
-                    break
-        except Exception:
-            pass
-        finally:
-            relay_task.cancel()
+    @application.post("/twiml")
+    async def twiml(request: Request):
+        form = await verified_form(request)
+        session_id = request.query_params.get("session_id")
+        response = VoiceResponse()
+        if session_id:
+            session = runtime.store.get(session_id)
+            if form.get("To") != settings.owner_phone_number:
+                raise HTTPException(403, "This call is not for the configured owner.")
+            if session["call_sid"] and session["call_sid"] != form.get("CallSid"):
+                raise HTTPException(403, "Call mismatch.")
+        else:
+            if (
+                not settings.owner_phone_number
+                or form.get("From") != settings.owner_phone_number
+                or form.get("To") != settings.twilio_phone_number
+            ):
+                response.reject(reason="rejected")
+                return Response(str(response), media_type="application/xml")
+            session = runtime.new_session()
+            session_id = session["id"]
+        if session["status"] in {"completed", "declined"}:
+            response.hangup()
+            return Response(str(response), media_type="application/xml")
+        runtime.store.update(session_id, call_sid=form.get("CallSid"), call_status="in-progress")
+        stream = response.connect().stream(
+            url=settings.public_url.replace("https://", "wss://") + "/media"
+        )
+        stream.parameter(name="session_id", value=session_id)
+        stream.parameter(name="stream_token", value=session["stream_token"])
+        response.hangup()
+        return Response(str(response), media_type="application/xml")
+
+    @application.post("/call-status")
+    async def call_status(request: Request):
+        form = await verified_form(request)
+        try:
+            runtime.callback(request.query_params.get("session_id", ""), form)
+        except ValueError as exc:
+            raise HTTPException(403, str(exc)) from None
+        return Response(status_code=204)
+
+    @application.websocket("/media")
+    async def media(websocket: WebSocket):
+        signature = websocket.headers.get("x-twilio-signature", "")
+        validator = RequestValidator(settings.twilio_auth_token)
+        url = settings.public_url + "/media"
+        valid = bool(
+            settings.twilio_auth_token
+            and settings.deepgram_api_key
+            and settings.public_url
+            and not websocket.url.query
+            and (
+                validator.validate(url, {}, signature)
+                or validator.validate(url + "/", {}, signature)
+            )
+        )
+        if not valid:
+            await websocket.close(code=1008)
+            return
+        await runtime.bridge.run(websocket)
+
+    return application
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=True)
+    settings = Settings.from_env()
+    configure_logging(settings.timezone)
+    uvicorn.run(
+        create_app(settings),
+        host="127.0.0.1",
+        port=settings.port,
+        proxy_headers=False,
+        ws_max_size=65536,
+    )

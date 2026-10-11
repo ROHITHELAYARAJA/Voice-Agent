@@ -2,3 +2,11 @@
 .venv/
 __pycache__/
 *.pyc
+data/
+credentials/
+*credentials*.json
+*service-account*.json
+.pytest_cache/
+.ruff_cache/
+outputs/
+.archify/
