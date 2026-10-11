@@ -98,3 +98,43 @@ class Store:
             "answers",
             "expenses",
             "income",
+            "call_error",
+            "stream_token",
+        }
+        if not changes or not changes.keys() <= allowed:
+            raise ValueError("Invalid session update")
+        values = [
+            json.dumps(value, ensure_ascii=False)
+            if key in {"answers", "expenses", "income"}
+            else value
+            for key, value in changes.items()
+        ]
+        assignments = ", ".join(f"{key} = ?" for key in changes)
+        with self.connection() as db:
+            db.execute(
+                f"UPDATE sessions SET {assignments}, updated_at = ?, version = version + 1, next_sync_at = 0 WHERE id = ?",
+                (*values, utc_now(), session_id),
+            )
+        return self.get(session_id)
+
+    def tool_result(self, session_id: str, function_id: str) -> dict | None:
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT result FROM tool_results WHERE session_id = ? AND function_id = ?",
+                (session_id, function_id),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def cache_tool(self, session_id: str, function_id: str, result: dict) -> None:
+        with self.connection() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO tool_results VALUES (?, ?, ?)",
+                (session_id, function_id, json.dumps(result)),
+            )
+
+    def transcript(self, session_id: str, role: str, content: str) -> None:
+        with self.connection() as db:
+            db.execute(
+                "INSERT INTO transcripts(session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+                (session_id, role, content[:10000], utc_now()),
+            )
