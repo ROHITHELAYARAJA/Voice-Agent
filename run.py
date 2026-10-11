@@ -78,3 +78,63 @@ async def live_check(settings: Settings) -> bool:
                     open_timeout=15,
                     close_timeout=3,
                 ) as agent:
+                    event = json.loads(await asyncio.wait_for(agent.recv(), timeout=10))
+                    if event.get("type") != "Welcome":
+                        raise ValueError("Missing welcome event")
+                    logging.getLogger("DEEPGRAM").info(
+                        "API key accepted | Voice Agent WebSocket connected"
+                    )
+            except Exception:
+                logging.getLogger("DEEPGRAM").error(
+                    "Authentication check failed; inspect the Deepgram key and network"
+                )
+                ok = False
+        else:
+            ok = False
+        if settings.elevenlabs_api_key:
+            try:
+                response = await http.get(
+                    f"https://api.elevenlabs.io/v1/voices/{settings.tts_voice}",
+                    headers={"xi-api-key": settings.elevenlabs_api_key},
+                )
+                response.raise_for_status()
+                voice = response.json().get("name", "")
+                logging.getLogger("ELEVENLABS").info(
+                    "Voice accessible | %s", voice or "configured voice"
+                )
+                if "jessica" not in voice.lower():
+                    logging.getLogger("ELEVENLABS").warning(
+                        "The configured voice is not named Jessica. Check TTS_VOICE_ID."
+                    )
+            except (httpx.HTTPError, ValueError):
+                logging.getLogger("ELEVENLABS").error(
+                    "Jessica voice check failed; check the ElevenLabs key and voice access"
+                )
+                ok = False
+        else:
+            logging.getLogger("ELEVENLABS").warning(
+                "Voice access cannot be checked until ELEVENLABS_API_KEY is configured"
+            )
+            ok = False
+        if settings.twilio_account_sid and settings.twilio_auth_token:
+            try:
+                response = await http.get(
+                    f"https://api.twilio.com/2010-04-01/Accounts/{settings.twilio_account_sid}.json",
+                    auth=(settings.twilio_account_sid, settings.twilio_auth_token),
+                )
+                response.raise_for_status()
+                logging.getLogger("TWILIO").info("Account credentials accepted")
+            except httpx.HTTPError:
+                logging.getLogger("TWILIO").error(
+                    "Account check failed; inspect Twilio credentials"
+                )
+                ok = False
+        if not settings.missing_sheet_settings():
+            try:
+                await SheetsClient(settings, http).request(
+                    "GET", params={"fields": "spreadsheetId"}
+                )
+                logging.getLogger("SHEETS").info(
+                    "Google authentication accepted | spreadsheet accessible"
+                )
+            except IntegrationError as exc:
