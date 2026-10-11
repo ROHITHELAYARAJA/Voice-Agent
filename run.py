@@ -138,3 +138,63 @@ async def live_check(settings: Settings) -> bool:
                     "Google authentication accepted | spreadsheet accessible"
                 )
             except IntegrationError as exc:
+                logging.getLogger("SHEETS").error("%s", exc)
+                ok = False
+    return ok
+
+
+def help_commands() -> None:
+    logger.info(
+        "Commands: call | resume <check-in-id> | hangup | status | list | show <check-in-id> | sync | help | quit"
+    )
+
+
+async def command(runtime: BuddyRuntime, line: str) -> bool:
+    parts = line.strip().split(maxsplit=1)
+    if not parts:
+        return True
+    action = parts[0].lower()
+    argument = parts[1] if len(parts) > 1 else None
+    try:
+        if action == "call" and not argument:
+            await runtime.start_call()
+        elif action == "resume" and argument:
+            await runtime.start_call(argument)
+        elif action == "hangup" and not argument:
+            await runtime.hangup()
+        elif action == "status":
+            print_status(runtime.settings)
+            active = runtime.active_call()
+            logger.info(
+                "Active call: %s", f"{active['id']} | {active['call_status']}" if active else "none"
+            )
+        elif action == "list":
+            sessions = runtime.store.list_sessions(20)
+            for session in sessions:
+                logger.info(
+                    "%s | %s | %s | call %s | Sheets %s",
+                    session["id"],
+                    session["checkin_date"],
+                    session["status"],
+                    session["call_status"],
+                    runtime.checkin.state(session["id"])["sheets_status"],
+                )
+            if not sessions:
+                logger.info("No check-ins yet. Use call to begin.")
+        elif action == "show" and argument:
+            logger.info(
+                "%s", json.dumps(runtime.checkin.state(argument), ensure_ascii=False, indent=2)
+            )
+        elif action == "sync":
+            runtime.store.retry_sync()
+            logger.info("Sync result: %s", await runtime.sheets.flush())
+        elif action == "help":
+            help_commands()
+        elif action in {"quit", "exit"}:
+            return False
+        else:
+            logger.warning("Unknown command or missing argument")
+            help_commands()
+    except (IntegrationError, KeyError, ValueError) as exc:
+        logger.error("%s", str(exc))
+    return True
