@@ -78,3 +78,33 @@ async def test_retry_after_google_write_reuses_row_and_raw_values(settings, monk
         assert [row for row, _ in fake.writes] == [2, 2]
         assert all(mode == "RAW" for _, mode in fake.writes)
         assert fake.rows[2][3] == "=IMPORTXML(attacker)"
+        assert len(fake.rows) == 2
+
+
+async def test_different_header_and_row_move_are_not_overwritten(settings, monkeypatch):
+    fake = FakeSheets()
+    fake.rows[1] = ["Private unrelated data"]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(fake.handle)) as http:
+        client = SheetsClient(settings, http)
+        monkeypatch.setattr(client, "refresh_credentials", lambda: "test-token")
+        with pytest.raises(IntegrationError, match="different header"):
+            await client.initialize()
+        assert fake.writes == []
+        fake.rows[1] = HEADERS
+        store = Store(settings.data_dir / "test.sqlite3")
+        session = store.create("2026-10-11")
+        await client.write(store, session)
+        fake.rows[2] = ["Someone else's row"]
+        with pytest.raises(IntegrationError, match="moved or edited"):
+            await client.write(store, session)
+        assert len(fake.writes) == 1
+
+
+def test_row_reservation_and_target_isolation(settings):
+    store = Store(settings.data_dir / "test.sqlite3")
+    session = store.create("2026-10-11")
+    assert store.reserve_row("sheet-a", session["id"], 2) == 2
+    assert store.reserve_row("sheet-a", session["id"], 200) == 2
+    store.mark_synced("sheet-a", session["id"], session["version"])
+    assert store.pending("sheet-a", 100) == []
+    assert len(store.pending("sheet-b", 100)) == 1
