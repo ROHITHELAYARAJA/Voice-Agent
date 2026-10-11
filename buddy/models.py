@@ -50,6 +50,10 @@ class AnswerInput(StrictModel):
     section: Section
     answer: str = Field(min_length=1, max_length=5000)
     skipped: bool = False
+    details_complete: bool = Field(
+        default=True,
+        description="For spending/income: false if any amount is missing or estimated; put uncertain details in answer, outside entries.",
+    )
     consent: bool | None = None
     entries: list[MoneyEntry] = Field(default_factory=list, max_length=50)
 
