@@ -38,3 +38,43 @@ class FakeTwilio:
             assert any(item["event"] == "media" for item in self.sent)
             self.events.put_nowait({"event": "mark", "mark": message["mark"]})
 
+
+async def test_full_call_relay_records_answers_and_waits_for_playback(settings):
+    runtime = BuddyRuntime(settings)
+    try:
+        session = runtime.new_session()
+        twilio = FakeTwilio()
+        agent = FakeAgent()
+        twilio.events.put_nowait(
+            {"event": "media", "media": {"payload": base64.b64encode(b"caller-audio").decode()}}
+        )
+        agent.event({"type": "SettingsApplied"})
+        agent.event({"type": "ConversationText", "role": "user", "content": "Yes, let's do it"})
+        agent.event({"type": "UserStartedSpeaking"})
+        for index, section in enumerate(Section):
+            arguments = {
+                "section": section.value,
+                "answer": "Yes" if section == Section.CONSENT else "No updates",
+            }
+            if section == Section.CONSENT:
+                arguments["consent"] = True
+            agent.event(
+                {
+                    "type": "FunctionCallRequest",
+                    "functions": [
+                        {
+                            "id": str(index),
+                            "name": "record_answer",
+                            "arguments": json.dumps(arguments),
+                            "client_side": True,
+                        }
+                    ],
+                }
+            )
+        agent.event(
+            {
+                "type": "FunctionCallRequest",
+                "functions": [
+                    {
+                        "id": "complete",
+                        "name": "complete_checkin",
