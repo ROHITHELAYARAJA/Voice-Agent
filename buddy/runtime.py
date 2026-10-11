@@ -68,3 +68,38 @@ class BuddyRuntime:
             self.store.update(
                 session["id"],
                 call_status="starting",
+                call_error=None,
+                stream_token=secrets.token_urlsafe(32),
+            )
+            logger.info("Requesting a call to your configured number | check-in %s", session["id"])
+            try:
+                result = await self.telephony.call_owner(session["id"])
+                current = self.store.get(session["id"])
+                changes = {"call_sid": result["sid"]}
+                if current["call_status"] == "starting":
+                    changes["call_status"] = result.get("status", "queued")
+                self.store.update(session["id"], **changes)
+            except IntegrationError as exc:
+                self.store.update(session["id"], call_status="failed", call_error=str(exc))
+                logger.error("%s", exc)
+                raise
+            self.sheets.wake.set()
+            logger.info(
+                "Call accepted | %s | %s",
+                result["sid"],
+                self.store.get(session["id"])["call_status"],
+            )
+            return self.store.get(session["id"])
+
+    def active_call(self) -> dict | None:
+        return next(
+            (
+                session
+                for session in self.store.list_sessions(1000)
+                if session["call_status"]
+                in {"starting", "queued", "initiated", "ringing", "in-progress"}
+            ),
+            None,
+        )
+
+    async def hangup(self) -> None:
