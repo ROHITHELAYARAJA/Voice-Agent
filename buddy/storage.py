@@ -138,3 +138,43 @@ class Store:
                 "INSERT INTO transcripts(session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
                 (session_id, role, content[:10000], utc_now()),
             )
+
+    def transcripts(self, session_id: str) -> list[dict]:
+        with self.connection() as db:
+            rows = db.execute(
+                "SELECT role, content, created_at FROM transcripts WHERE session_id = ? ORDER BY id LIMIT 1000",
+                (session_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def pending(self, target: str, now: float) -> list[dict]:
+        with self.connection() as db:
+            rows = db.execute(
+                """
+                SELECT s.* FROM sessions s LEFT JOIN sheet_sync x ON x.session_id = s.id AND x.target = ?
+                WHERE s.version > COALESCE(x.version, 0) AND s.next_sync_at <= ?
+                ORDER BY s.updated_at LIMIT 20
+            """,
+                (target, now),
+            ).fetchall()
+        return [self.decode(row) for row in rows]
+
+    def reserve_row(self, target: str, session_id: str, minimum_row: int) -> int:
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute(
+                "SELECT row_number FROM sheet_rows WHERE target = ? AND session_id = ?",
+                (target, session_id),
+            ).fetchone()
+            if existing:
+                return existing[0]
+            last = (
+                db.execute(
+                    "SELECT MAX(row_number) FROM sheet_rows WHERE target = ?", (target,)
+                ).fetchone()[0]
+                or 1
+            )
+            row_number = max(last + 1, minimum_row)
+            db.execute("INSERT INTO sheet_rows VALUES (?, ?, ?)", (target, session_id, row_number))
+        return row_number
+
