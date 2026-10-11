@@ -48,3 +48,28 @@ def functions() -> list[dict]:
             "Save or correct one section after the user's answer. Money entries replace the complete section list.",
             AnswerInput.model_json_schema(),
         ),
+        (
+            "complete_checkin",
+            "Mark complete only after every section is answered or skipped and the user explicitly approves the read-back.",
+            CompleteInput.model_json_schema(),
+        ),
+        (
+            "end_conversation",
+            "End the phone call when the user wants to stop, declines, or after completion.",
+            EndInput.model_json_schema(),
+        ),
+    ]
+    return [
+        {"name": name, "description": description, "parameters": schema, "defer_until_eot": True}
+        for name, description, schema in definitions
+    ]
+
+
+def build_agent_settings(settings: Settings, state: dict) -> dict:
+    prompt = PROMPT.format(
+        owner_name=settings.owner_name,
+        checkin_date=state["date"],
+        timezone=settings.timezone,
+        currency=settings.currency,
+        state=json.dumps(state, ensure_ascii=False),
+    )
