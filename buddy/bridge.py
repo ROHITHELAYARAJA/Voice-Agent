@@ -158,3 +158,43 @@ class VoiceBridge:
                 kind = event.get("type")
                 if kind == "SettingsApplied":
                     settings_ready.set()
+                    logger.info("Settings accepted | listening, thinking and speaking are ready")
+                elif kind == "UserStartedSpeaking":
+                    last_activity = time.monotonic()
+                    audio_active = False
+                    await send_twilio({"event": "clear"})
+                    logger.info("User speaking | cleared buffered speech")
+                elif kind == "ConversationText":
+                    last_activity = time.monotonic()
+                    self.store.transcript(
+                        session_id, event.get("role", "unknown"), event.get("content", "")
+                    )
+                    logging.getLogger("YOU" if event.get("role") == "user" else "BUDDY").info(
+                        "%s", event.get("content", "")
+                    )
+                elif kind == "AgentAudioDone":
+                    audio_active = False
+                    if end_requested:
+                        await mark_end()
+                elif kind == "FunctionCallRequest":
+                    for function in event.get("functions", []):
+                        if function.get("client_side") is False:
+                            continue
+                        result = self.checkin.execute(
+                            session_id,
+                            function.get("id", ""),
+                            function.get("name", ""),
+                            function.get("arguments", function.get("input", "{}")),
+                        )
+                        response = {
+                            "type": "FunctionCallResponse",
+                            "id": function.get("id"),
+                            "name": function.get("name"),
+                            "content": json.dumps(result, ensure_ascii=False),
+                        }
+                        if "thought_signature" in function:
+                            response["thought_signature"] = function["thought_signature"]
+                        await agent.send(json.dumps(response))
+                        self.sync.wake.set()
+                        if result.get("ok") and function.get("name") in {
+                            "record_answer",
