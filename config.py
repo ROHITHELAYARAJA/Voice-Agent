@@ -49,6 +49,8 @@ class Settings:
             "twilio_phone_number": "TWILIO_PHONE_NUMBER",
             "owner_phone_number": "OWNER_PHONE_NUMBER",
             "owner_name": "OWNER_NAME",
+            "sheet_backend": "SHEET_BACKEND",
+            "excel_file": "EXCEL_FILE",
             "google_sheet_id": "GOOGLE_SHEET_ID",
             "google_credentials_file": "GOOGLE_CREDENTIALS_FILE",
             "google_sheet_tab": "GOOGLE_SHEET_TAB",
@@ -69,6 +71,10 @@ class Settings:
         if os.getenv("DATA_DIR"):
             values["data_dir"] = Path(os.environ["DATA_DIR"]).expanduser().resolve()
         settings = cls(**values)
+        if settings.sheet_backend not in {"excel", "google"}:
+            raise ValueError("SHEET_BACKEND must be excel or google")
+        if settings.excel_path.suffix.lower() != ".xlsx":
+            raise ValueError("EXCEL_FILE must end with .xlsx")
         ZoneInfo(settings.timezone)
         if not 1 <= settings.port <= 65535:
             raise ValueError("PORT must be between 1 and 65535")
@@ -100,6 +106,13 @@ class Settings:
         return f"https://{parsed.netloc}"
 
     @property
+    def excel_path(self) -> Path:
+        if not self.excel_file:
+            return self.data_dir / "Buddy Daily Check-ins.xlsx"
+        path = Path(self.excel_file).expanduser()
+        return path if path.is_absolute() else ROOT / path
+
+    @property
     def credentials_path(self) -> Path | None:
         if not self.google_credentials_file:
             return None
@@ -125,6 +138,9 @@ class Settings:
         return missing
 
     def missing_sheet_settings(self) -> list[str]:
+        return [] if self.sheet_backend == "excel" else self.missing_google_settings()
+
+    def missing_google_settings(self) -> list[str]:
         missing = []
         if not re.fullmatch(r"[\w-]+", self.google_sheet_id):
             missing.append("GOOGLE_SHEET_ID")
