@@ -77,7 +77,17 @@ def checkin_row(session: dict, timezone: str) -> list:
 
 
 class SheetsClient:
+    label = "Google Sheet"
+
     def __init__(self, settings: Settings, http: httpx.AsyncClient):
+        self.settings = settings
+        self.http = http
+        self.credentials = None
+        self.initialized = False
+
+    @property
+    def configured(self) -> bool:
+        return not self.settings.missing_google_settings()
         self.settings = settings
         self.http = http
         self.credentials = None
