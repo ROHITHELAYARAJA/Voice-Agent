@@ -33,3 +33,13 @@ class TwilioClient:
     async def call_owner(self, session_id: str) -> dict:
         base = self.settings.public_url
         return await self.request(
+            "Calls.json",
+            {
+                "To": self.settings.owner_phone_number,
+                "From": self.settings.twilio_phone_number,
+                "Url": f"{base}/twiml?session_id={session_id}",
+                "Method": "POST",
+                "StatusCallback": f"{base}/call-status?session_id={session_id}",
+                "StatusCallbackMethod": "POST",
+                "StatusCallbackEvent": ["initiated", "ringing", "answered", "completed"],
+                "Timeout": "30",
