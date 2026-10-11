@@ -130,3 +130,35 @@ class ExcelClient:
                 )
         sheet.auto_filter.ref = sheet.dimensions
         log.auto_filter.ref = log.dimensions
+
+    def persist(self, store: Store, session: dict | None = None):
+        from zipfile import BadZipFile
+        from buddy.sheets import IntegrationError
+
+        workbook = None
+        try:
+            new_file = not self.path.exists()
+            workbook = self.open()
+            if new_file:
+                with store.connection() as db:
+                    sessions = [
+                        store.decode(row)
+                        for row in db.execute("SELECT * FROM sessions ORDER BY created_at")
+                    ]
+                for record in sessions:
+                    self.update(workbook, store, record)
+            if session:
+                self.update(workbook, store, session)
+            if new_file or session:
+                self.save(workbook)
+        except PermissionError:
+            raise IntegrationError(
+                "Excel file is locked. Close it in Excel, then use sync. Your answers remain saved locally."
+            ) from None
+        except (OSError, BadZipFile, ValueError):
+            raise IntegrationError(
+                "Excel file could not be read or saved. Check EXCEL_FILE and folder access. Your answers remain saved locally."
+            ) from None
+        finally:
+            if workbook:
+                workbook.close()
