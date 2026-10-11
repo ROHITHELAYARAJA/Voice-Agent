@@ -43,3 +43,9 @@ class TwilioClient:
                 "StatusCallbackMethod": "POST",
                 "StatusCallbackEvent": ["initiated", "ringing", "answered", "completed"],
                 "Timeout": "30",
+                "TimeLimit": str(self.settings.max_call_seconds),
+            },
+        )
+
+    async def hangup(self, call_sid: str) -> None:
+        await self.request(f"Calls/{call_sid}.json", {"Status": "completed"})
