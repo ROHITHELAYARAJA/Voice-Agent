@@ -2,13 +2,22 @@ import asyncio
 import os
 from datetime import datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from zipfile import BadZipFile
 from zoneinfo import ZoneInfo
+
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+
+from buddy.sheets import HEADERS, IntegrationError, checkin_row
 from buddy.storage import Store
 from config import Settings
 
 LOG_HEADERS = ["Log ID", "Check-in ID", "Timestamp", "Speaker", "Message"]
 CHECKINS_TAB = "Buddy Checkins"
 LOG_TAB = "Conversation Log"
+
 
 class ExcelClient:
     label = "Excel file"
@@ -24,9 +33,6 @@ class ExcelClient:
 
     @staticmethod
     def make_sheet(workbook, title: str, headers: list, widths: list):
-        from openpyxl.styles import Alignment, Font, PatternFill
-        from openpyxl.utils import get_column_letter
-
         sheet = workbook.create_sheet(title)
         sheet.append(headers)
         sheet.freeze_panes = "C2"
@@ -41,9 +47,6 @@ class ExcelClient:
         return sheet
 
     def open(self):
-        from openpyxl import Workbook, load_workbook
-        from buddy.sheets import HEADERS, IntegrationError
-
         if self.path.exists():
             workbook = load_workbook(self.path)
             for title, headers in [(CHECKINS_TAB, HEADERS), (LOG_TAB, LOG_HEADERS)]:
@@ -69,8 +72,6 @@ class ExcelClient:
 
     @staticmethod
     def put_row(sheet, number: int, values: list):
-        from openpyxl.styles import Alignment, Font
-
         for column, value in enumerate(values, 1):
             cell = sheet.cell(number, column, value)
             if isinstance(value, str):
@@ -80,8 +81,6 @@ class ExcelClient:
         sheet.row_dimensions[number].height = 45
 
     def save(self, workbook):
-        from tempfile import NamedTemporaryFile
-
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = None
         try:
@@ -94,8 +93,6 @@ class ExcelClient:
                 temporary.unlink()
 
     def update(self, workbook, store: Store, session: dict):
-        from buddy.sheets import IntegrationError, checkin_row
-
         sheet = workbook[CHECKINS_TAB]
         matches = [
             row[0].row
@@ -132,9 +129,6 @@ class ExcelClient:
         log.auto_filter.ref = log.dimensions
 
     def persist(self, store: Store, session: dict | None = None):
-        from zipfile import BadZipFile
-        from buddy.sheets import IntegrationError
-
         workbook = None
         try:
             new_file = not self.path.exists()
@@ -162,3 +156,14 @@ class ExcelClient:
         finally:
             if workbook:
                 workbook.close()
+
+    async def initialize(self, store: Store):
+        await asyncio.to_thread(self.persist, store)
+
+    async def write(self, store: Store, session: dict):
+        task = asyncio.create_task(asyncio.to_thread(self.persist, store, session))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            await task
+            raise
