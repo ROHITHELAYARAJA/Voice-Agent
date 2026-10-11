@@ -38,3 +38,43 @@ class VoiceBridge:
 
     def validate_start(self, start: dict) -> dict:
         parameters = start.get("customParameters", {})
+        session = self.store.get(parameters.get("session_id", ""))
+        media_format = start.get("mediaFormat", {})
+        if not secrets.compare_digest(parameters.get("stream_token", ""), session["stream_token"]):
+            raise ValueError("Invalid stream token")
+        if (
+            start.get("accountSid") != self.settings.twilio_account_sid
+            or start.get("callSid") != session["call_sid"]
+        ):
+            raise ValueError("Stream does not belong to this call")
+        if media_format != {"encoding": "audio/x-mulaw", "sampleRate": 8000, "channels": 1}:
+            raise ValueError("Unsupported audio format")
+        if not start.get("streamSid") or session["id"] in self.active_sessions:
+            raise ValueError("Duplicate or invalid stream")
+        if session["status"] in {"completed", "declined"}:
+            raise ValueError("Check-in is closed")
+        return session
+
+    async def run(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        session_id = None
+        claimed = False
+        failure = None
+        try:
+            start = await self.start_message(websocket)
+            session = self.validate_start(start)
+            session_id = session["id"]
+            self.active_sessions.add(session_id)
+            claimed = True
+            call_log.info(
+                "Media stream connected | call %s | check-in %s", start["callSid"], session_id
+            )
+            self.store.update(session_id, call_status="in-progress", call_error=None)
+            async with websockets.connect(
+                DEEPGRAM_URL,
+                additional_headers={"Authorization": f"Token {self.settings.deepgram_api_key}"},
+                open_timeout=15,
+                close_timeout=3,
+                max_size=2**20,
+                max_queue=16,
+            ) as agent:
