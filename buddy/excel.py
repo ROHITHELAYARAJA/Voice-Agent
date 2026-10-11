@@ -39,3 +39,30 @@ class ExcelClient:
             cell.fill = PatternFill("solid", fgColor="244A40")
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         return sheet
+
+    def open(self):
+        from openpyxl import Workbook, load_workbook
+        from buddy.sheets import HEADERS, IntegrationError
+
+        if self.path.exists():
+            workbook = load_workbook(self.path)
+            for title, headers in [(CHECKINS_TAB, HEADERS), (LOG_TAB, LOG_HEADERS)]:
+                if (
+                    title not in workbook.sheetnames
+                    or [cell.value for cell in workbook[title][1]] != headers
+                ):
+                    workbook.close()
+                    raise IntegrationError(
+                        "Excel headers do not match Buddy. Choose another EXCEL_FILE to protect existing data."
+                    )
+            return workbook
+        workbook = Workbook()
+        workbook.remove(workbook.active)
+        self.make_sheet(
+            workbook,
+            CHECKINS_TAB,
+            HEADERS,
+            [27, 14, 16, 40, 36, 36, 24, 40, 36, 24, 40, 32, 36, 36, 28, 22, 28, 18],
+        )
+        self.make_sheet(workbook, LOG_TAB, LOG_HEADERS, [14, 34, 30, 16, 100])
+        return workbook
