@@ -277,7 +277,12 @@ async def serve(settings: Settings, args) -> int:
             logging.getLogger("NGROK").info("Incoming-call webhook: %s/twiml", settings.public_url)
         print_status(settings)
         if args.call or args.resume:
-            await runtime.start_call(args.resume)
+            try:
+                await runtime.start_call(args.resume)
+            except IntegrationError:
+                logger.warning(
+                    "The call did not start. Buddy and ngrok remain online; use call to retry after fixing the reported issue."
+                )
         if not args.non_interactive:
             console_task = asyncio.create_task(console(runtime, server))
         await server_task
@@ -299,7 +304,7 @@ async def serve(settings: Settings, args) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Buddy terminal voice check-ins: ngrok + Twilio + Deepgram + Google Sheets"
+        description="Buddy terminal voice check-ins: ngrok + Twilio + Deepgram + local Excel"
     )
     parser.add_argument(
         "--call", action="store_true", help="Call your configured number after startup"
