@@ -70,10 +70,14 @@ class CheckinService:
             answer.section not in {Section.SPENDING, Section.INCOME} or answer.skipped
         ):
             raise ValueError("Money entries belong only to answered spending or income questions")
+        if not answer.details_complete and answer.section not in {Section.SPENDING, Section.INCOME}:
+            raise ValueError("details_complete belongs only to spending or income")
         session["answers"][answer.section.value] = {
             "answer": answer.answer,
             "skipped": answer.skipped,
         }
+        if answer.section in {Section.SPENDING, Section.INCOME}:
+            session["answers"][answer.section.value]["details_complete"] = answer.details_complete
         changes = {"answers": session["answers"], "status": "in_progress"}
         if answer.section == Section.CONSENT:
             session["answers"]["consent"]["accepted"] = answer.consent
