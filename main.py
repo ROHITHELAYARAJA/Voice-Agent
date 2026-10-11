@@ -1,70 +1,116 @@
 import asyncio
-import os
-import sys
-from dotenv import load_dotenv
-from websockets.asyncio.server import serve
+import base64
+import json
+import uvicorn
 import websockets
+from fastapi import FastAPI, Request, Response, WebSocket
 
-from tunnel import start_tunnel_async
+from config import (
+    AGENT_SETTINGS,
+    DEEPGRAM_API_KEY,
+    DEEPGRAM_WS_URL,
+    PORT,
+    PUBLIC_HOSTNAME,
+)
 
-# Load environment variables
-load_dotenv()
-
-PORT = int(os.getenv("PORT", 8000))
+app = FastAPI(title="Voice-Agent")
 
 
-async def voice_handler(websocket):
-    """
-    Handles incoming WebSocket connections for real-time voice / audio streaming.
-    """
-    remote_addr = websocket.remote_address
-    print(f"[+] Client connected from {remote_addr}")
+def sts_connect():
+    if not DEEPGRAM_API_KEY:
+        raise ValueError("DEEPGRAM_API_KEY not found in environment")
 
+    return websockets.connect(
+        DEEPGRAM_WS_URL,
+        subprotocols=["token", DEEPGRAM_API_KEY],
+        open_timeout=30,
+    )
+
+
+async def agent_to_twilio(twilio_ws: WebSocket, agent_ws, stream_sid_box: dict) -> None:
     try:
-        # Send welcome message
-        await websocket.send("Connected to Voice-Agent!")
+        while True:
+            message = await agent_ws.recv()
+            sid = stream_sid_box.get("sid")
 
-        async for message in websocket:
             if isinstance(message, bytes):
-                # Binary audio data received (e.g. PCM, μ-law, Opus)
-                print(f"[Audio] Received {len(message)} bytes of audio data")
-                await websocket.send(f"ACK: Received {len(message)} audio bytes")
+                payload = base64.b64encode(message).decode("utf-8")
+                await twilio_ws.send_text(
+                    json.dumps({
+                        "event": "media",
+                        "streamSid": sid,
+                        "media": {"payload": payload},
+                    })
+                )
             else:
-                # Text / JSON event
-                print(f"[Event] Received message: {message}")
-                await websocket.send(f"Echo: {message}")
+                data = json.loads(message)
+                event_type = data.get("type")
 
-    except websockets.exceptions.ConnectionClosed:
-        print(f"[-] Client {remote_addr} disconnected.")
-    except Exception as e:
-        print(f"[!] Error in voice connection: {e}")
+                if event_type == "UserStartedSpeaking":
+                    await twilio_ws.send_text(
+                        json.dumps({
+                            "event": "clear",
+                            "streamSid": sid,
+                        })
+                    )
+                elif event_type == "ConversationText":
+                    role = data.get("role", "unknown")
+                    content = data.get("content", "")
+                    print(f"[{role}] {content}")
+    except (websockets.exceptions.ConnectionClosed, asyncio.CancelledError):
+        pass
 
 
-async def main():
-    print("\n" + "=" * 60)
-    print(" 🎙️  VOICE AGENT SERVER & NGROK TUNNEL")
-    print("=" * 60)
-    print(f" Starting local WebSocket server on localhost:{PORT}...")
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "service": "Twilio-Deepgram Voice Agent",
+        "public_host": PUBLIC_HOSTNAME,
+    }
 
-    # Start the ngrok tunnel asynchronously
-    tunnel = await start_tunnel_async(port=PORT)
 
-    print("-" * 60)
-    print(f" 🌐 Public HTTPS URL : {tunnel['url']}")
-    print(f" 🔗 Public WSS URL   : {tunnel['ws_url']}")
-    print("-" * 60)
-    print(" Server is ready and publicly accessible!")
-    print(" Press Ctrl+C to stop.\n")
+@app.post("/twiml")
+async def twiml(request: Request) -> Response:
+    host = PUBLIC_HOSTNAME.replace("https://", "").replace("http://", "").strip("/")
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="wss://{host}/media" />
+  </Connect>
+</Response>"""
+    return Response(content=xml, media_type="application/xml")
 
-    # Start WebSocket server
-    async with serve(voice_handler, "localhost", PORT):
-        # Keep running
-        await asyncio.Future()
+
+@app.websocket("/media")
+async def media(twilio_ws: WebSocket) -> None:
+    await twilio_ws.accept()
+    stream_sid_box: dict = {}
+
+    async with sts_connect() as agent_ws:
+        relay_task = asyncio.create_task(
+            agent_to_twilio(twilio_ws, agent_ws, stream_sid_box)
+        )
+
+        try:
+            while True:
+                raw = await twilio_ws.receive_text()
+                msg = json.loads(raw)
+                event = msg.get("event")
+
+                if event == "start":
+                    stream_sid_box["sid"] = msg["start"]["streamSid"]
+                    await agent_ws.send(json.dumps(AGENT_SETTINGS))
+                elif event == "media":
+                    payload = base64.b64decode(msg["media"]["payload"])
+                    await agent_ws.send(payload)
+                elif event == "stop":
+                    break
+        except Exception:
+            pass
+        finally:
+            relay_task.cancel()
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n[!] Shutting down Voice Agent server and tunnel...")
-        sys.exit(0)
+    uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=True)
