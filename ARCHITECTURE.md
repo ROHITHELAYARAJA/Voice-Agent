@@ -15,10 +15,13 @@ The architecture was developed with the local Archify skill, then revised to fol
 | Enforce question order, corrections, consent, skips and completion | `buddy/checkin.py`, `buddy/models.py` |
 | Persist answers, transcript, versions, row reservations and retry state | `buddy/storage.py` |
 | Authenticate Google, protect existing headers, update fixed rows and retry failures | `buddy/sheets.py` |
+| Write the default local Excel summary and conversation log, with atomic replacement | `buddy/excel.py` |
 | Format timestamped terminal logs | `buddy/logging.py` |
 
 The call path is terminal command → Twilio Calls API → signed TwiML webhook → Twilio bidirectional Media Stream → Deepgram Voice Agent. Deepgram manages Flux STT and Gemini 3.8 Flash; the configured ElevenLabs endpoint provides Jessica speech. Twilio and Deepgram both use mulaw at 8 kHz. Your server forwards audio bytes without transcoding.
 
-The write path is Gemini tool request → validated check-in service → SQLite commit → asynchronous Google Sheets update. The server owns the next question and refuses completion until all sections are answered or skipped and confirmation is provided. Tool definitions defer execution until the speaker finishes the turn.
+The default write path is Gemini tool request → validated check-in service → SQLite commit → asynchronous local Excel update. ConversationText commits the transcript and wakes the same writer. Google Sheets is optional and its authentication dependencies are installed only through the google-sheets extra. The server owns the next question and refuses completion until all sections are answered or skipped and confirmation is provided. Tool definitions defer execution until the speaker finishes the turn.
 
-Use a single process for this personal agent. SQLite and the dedicated Google tab are a matched persistence pair. Retain the database and do not reorder, delete or replace the tab's rows. Fixed-row writes retry safely after a lost response; if a reserved row contains another check-in, sync stops instead of overwriting it.
+Money details can be marked incomplete without inventing amounts. `details_complete` is stored with the spending/income answer, exposed through `incomplete_money_sections`, and rendered in the existing notes columns. Structured entries and totals contain only confirmed exact amounts. The model must read back incomplete details before final confirmation; schema and server checks enforce amount constraints, question order and saving, while interpretation of speech remains the model's responsibility.
+
+Use a single process for this personal agent. SQLite is the authoritative record and Excel is its local readable copy. Keep the computer awake and the process running. Each Excel save uses a temporary file in the destination folder and atomic replacement; a locked workbook leaves the previous file intact and retries from SQLite. Check-in and transcript IDs prevent duplicate rows, and mismatched headers stop writes. In optional Google mode, fixed-row writes retry safely after a lost response and stop if a reserved row belongs to another check-in.
