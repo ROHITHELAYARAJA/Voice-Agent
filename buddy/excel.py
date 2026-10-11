@@ -78,3 +78,17 @@ class ExcelClient:
             cell.font = Font(name="Arial", size=11, color="24332D")
             cell.alignment = Alignment(vertical="top", wrap_text=True)
         sheet.row_dimensions[number].height = 45
+
+    def save(self, workbook):
+        from tempfile import NamedTemporaryFile
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+        try:
+            with NamedTemporaryFile(dir=self.path.parent, suffix=".xlsx", delete=False) as file:
+                temporary = Path(file.name)
+            workbook.save(temporary)
+            os.replace(temporary, self.path)
+        finally:
+            if temporary and temporary.exists():
+                temporary.unlink()
