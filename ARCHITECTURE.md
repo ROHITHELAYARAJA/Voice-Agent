@@ -1,29 +1,39 @@
-# Buddy's implementation contract
+# Buddy implementation contract
 
-Buddy is a terminal application. No dashboard, browser interface, or web API for starting calls is served. FastAPI exposes only the phone bridge and a minimal health endpoint.
-
-The architecture was developed with the local Archify skill, then revised to follow the terminal-only requirement. The Archify specification is retained under `.archify` as a design contract. Runtime behavior is owned by the source files below, with regression checks in `tests`.
+The retained Archify specification under `.archify` describes Buddy's architecture. Source files own runtime behavior. The application exposes signed phone endpoints, a minimal health endpoint and terminal commands.
 
 | Responsibility | Source of truth |
 | --- | --- |
-| Start server and ngrok, accept terminal commands, check provider access | `run.py` |
-| Read configuration without exposing secret values | `config.py`, `setup.py` |
-| Own call initiation, recipient restriction, status and concurrency | `buddy/runtime.py`, `buddy/telephony.py` |
-| Authenticate Twilio webhooks and media handshakes; return bidirectional TwiML | `main.py` |
-| Relay mulaw audio, handle interruptions, tool responses and playback before ending | `buddy/bridge.py` |
-| Define Gemini instructions and the authenticated ElevenLabs Jessica endpoint | `buddy/agent.py` |
-| Enforce question order, corrections, consent, skips and completion | `buddy/checkin.py`, `buddy/models.py` |
-| Persist answers, transcript, versions, row reservations and retry state | `buddy/storage.py` |
-| Authenticate Google, protect existing headers, update fixed rows and retry failures | `buddy/sheets.py` |
-| Write the default local Excel summary and conversation log, with atomic replacement | `buddy/excel.py` |
-| Format timestamped terminal logs | `buddy/logging.py` |
+| Server, ngrok, commands and live checks | `run.py`, `tunnel.py` |
+| Modes, credentials and local-only AI address | `config.py`, `setup.py` |
+| Official runtime and model setup | `setup_local.py`, `buddy/local_server.py` |
+| Account-aware dialing, status polling and concurrency | `buddy/telephony.py`, `buddy/runtime.py` |
+| Signed TwiML, answer and status webhooks | `main.py` |
+| Phone turns, consent, summary, corrections and trial budget | `buddy/phone.py` |
+| Shared prompt and validated structured interpretation | `buddy/local_ai.py`, `buddy/deepgram_ai.py` |
+| Managed Jessica audio and private call-bound playback | `buddy/voice_audio.py` |
+| Provider-compatible function schemas | `buddy/provider_schema.py` |
+| Explicit stop requests and spoken amount evidence | `buddy/safety.py` |
+| Question order, money constraints and explicit completion | `buddy/checkin.py`, `buddy/models.py` |
+| SQLite answers, transcripts and persistent phone responses | `buddy/storage.py` |
+| Atomic Excel saves and optional Google sync | `buddy/excel.py`, `buddy/sheets.py` |
+| Optional Deepgram streaming relay | `buddy/bridge.py`, `buddy/agent.py` |
+| Actual provider verification without phone calls | `verify_local.py`, `verify_deepgram.py` |
 
-The call path is terminal command → Twilio Calls API → signed TwiML webhook → Twilio bidirectional Media Stream → Deepgram Voice Agent. Deepgram manages Flux STT and Gemini 3.8 Flash; the configured ElevenLabs endpoint provides Jessica speech. Twilio and Deepgram both use mulaw at 8 kHz. Your server forwards audio bytes without transcoding.
+Configured call path: terminal -> Jessica audio preparation and model readiness -> Twilio Calls API -> authenticated /twiml -> Gather speech input -> authenticated /answer -> durable speech -> Deepgram InjectUserMessage / GPT-4.1 Mini structured interpretation -> server-validated answer -> Play Jessica WAV -> readback and explicit confirmation. Twilio transcribes online; Deepgram hosts reasoning and managed ElevenLabs voice. SQLite and Excel remain local. The optional local provider uses Ollama and Twilio Say.
 
-Call initiation checks the account type. Trial accounts receive the minimal `To`, `From`, `Url` request, while full accounts receive callbacks and call limits. A runtime task reads active call status every three seconds; duplicate or regressing updates do not rewrite the session. Call rejection leaves the server and tunnel online. Current Twilio trial restrictions block Media Streams, so trial dialing alone does not establish the agent audio path; the terminal and live doctor make that limitation explicit.
+The managed speak settings use the user's supplied `eleven_turbo_v2_5` and Jessica `voice_id`, without an endpoint or separate key. GPT-4.1 Mini uses the managed OpenAI integration; the retained GPT-6 branch uses `reasoning_mode: none` and no temperature override. Direct Media Streams use 8 kHz µ-law; the exported browser settings use linear16 48/24 kHz. A trial account is rejected before any stream call is created.
 
-The default write path is Gemini tool request → validated check-in service → SQLite commit → asynchronous local Excel update. ConversationText commits the transcript and wakes the same writer. Google Sheets is optional and its authentication dependencies are installed only through the google-sheets extra. The server owns the next question and refuses completion until all sections are answered or skipped and confirmation is provided. Tool definitions defer execution until the speaker finishes the turn.
+Only public static prompts are persisted as model/voice-keyed WAV cache files. Personal summary audio is never written to this cache. One clarification per topic is enforced by the server, independent of model instructions. Unresolved amounts remain incomplete with empty unconfirmed entries; review is not auto-approved. Recognition uses a configurable one-second pause.
 
-Money details can be marked incomplete without inventing amounts. `details_complete` is stored with the spending/income answer, exposed through `incomplete_money_sections`, and rendered in the existing notes columns. Structured entries and totals contain only confirmed exact amounts. The model must read back incomplete details before final confirmation; schema and server checks enforce amount constraints, question order and saving, while interpretation of speech remains the model's responsibility.
+Jessica audio is generated through Deepgram, assembled as 24 kHz mono PCM WAV, and exposed through bounded, expiring opaque URLs tied to the call SID. HTTP audio requests are private/no-store. Static questions are prepared before dialing; readback fragments are prepared while the user answers following questions. Only the server supplies questions and decides completion. Provider connections are closed at call end, dial failure and shutdown.
 
-Use a single process for this personal agent. SQLite is the authoritative record and Excel is its local readable copy. Keep the computer awake and the process running. Each Excel save uses a temporary file in the destination folder and atomic replacement; a locked workbook leaves the previous file intact and retries from SQLite. Check-in and transcript IDs prevent duplicate rows, and mismatched headers stop writes. In optional Google mode, fixed-row writes retry safely after a lost response and stop if a reserved row belongs to another check-in.
+Phone turns are keyed by call SID and turn number. Prompts, inputs, interpretations and final responses are durable. Repeated delivery reuses the response; conflicting input is rejected. Corrections replace money entries instead of appending duplicates. Resumed calls require fresh permission before disclosing saved details. Only the bound call SID and configured recipient may submit answers, using Twilio signatures or a trial call secret.
+
+The new Twilio trial proxy omits the signature header. Outbound trial Gather calls therefore use a random secret generated for each call attempt, carried in the TwiML and answer URLs. The server validates that secret in constant time together with the bound call SID, recipient, account when provided, and active call status. Finished calls expire that authorization; resumes rotate the secret. A present but invalid signature is always rejected. Full accounts continue to require Twilio signatures. Terminal request logs omit query strings and secret values.
+
+The normal flow uses nine submitted answers, including consent and final review. A ten-answer ceiling leaves one spare turn; exhaustion ends the partial check-in for manual resume. Silence, clarification and corrections consume the same budget. Interpretation times out safely; captured speech remains durable but is not marked validated. Model warming happens before dialing.
+
+Write path: speech or validated answer -> SQLite commit -> background writer -> atomic Excel replacement. Excel contains check-ins and conversation logs. Locked files retry, mismatched headers stop writes, and IDs prevent duplicate rows. Google Sheets is optional with separate dependencies. Unknown and estimated amounts stay explicit in notes, outside confirmed totals.
+
+The original media stream path remains optional through CALL_MODE=stream and requires provider access. The local AI endpoint is loopback-only and cloud models are rejected. Call status reads release busy/no-answer/completed slots and ignore duplicate or regressing updates. A rejected initial call leaves Buddy and ngrok online.
