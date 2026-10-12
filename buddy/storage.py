@@ -257,3 +257,22 @@ class Store:
                 {"role": "user", "content": row["speech"]},
             )
         ]
+
+    def open_phone_turn(
+        self, call_sid: str, turn: int, session_id: str, section: str, question: str, xml: str
+    ) -> dict:
+        with self.connection() as db:
+            inserted = db.execute(
+                "INSERT OR IGNORE INTO phone_turns(call_sid, turn, session_id, section, question, xml) VALUES (?, ?, ?, ?, ?, ?)",
+                (call_sid, turn, session_id, section, question, xml),
+            ).rowcount
+            if inserted:
+                db.execute(
+                    "INSERT INTO transcripts(session_id, role, content, created_at) VALUES (?, 'assistant', ?, ?)",
+                    (session_id, question, utc_now()),
+                )
+                db.execute(
+                    "UPDATE sessions SET version = version + 1, updated_at = ?, next_sync_at = 0 WHERE id = ?",
+                    (utc_now(), session_id),
+                )
+        return self.phone_turn(call_sid, turn)
