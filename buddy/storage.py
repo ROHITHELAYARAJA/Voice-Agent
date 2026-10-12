@@ -233,3 +233,27 @@ class Store:
             """,
                 (utc_now(),),
             )
+
+    def phone_turn(self, call_sid: str, turn: int) -> dict:
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT * FROM phone_turns WHERE call_sid = ? AND turn = ?", (call_sid, turn)
+            ).fetchone()
+        if row is None:
+            raise KeyError("Phone turn not found")
+        return dict(row)
+
+    def phone_context(self, call_sid: str, turn: int, section: str) -> list[dict]:
+        with self.connection() as db:
+            rows = db.execute(
+                "SELECT question, speech FROM phone_turns WHERE call_sid = ? AND turn < ? AND section = ? AND speech IS NOT NULL ORDER BY turn DESC LIMIT 3",
+                (call_sid, turn, section),
+            ).fetchall()
+        return [
+            item
+            for row in reversed(rows)
+            for item in (
+                {"role": "assistant", "content": row["question"]},
+                {"role": "user", "content": row["speech"]},
+            )
+        ]
