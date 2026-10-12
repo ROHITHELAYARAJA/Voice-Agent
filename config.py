@@ -107,6 +107,14 @@ class Settings:
         settings = cls(**values)
         if settings.call_mode not in {"gather", "stream"}:
             raise ValueError("CALL_MODE must be gather or stream")
+        if settings.stream_stt_provider not in {"deepgram", "whisper"}:
+            raise ValueError("STREAM_STT_PROVIDER must be deepgram or whisper")
+        if settings.conversation_language not in {"en", "ta"}:
+            raise ValueError("CONVERSATION_LANGUAGE must be en or ta")
+        if settings.whisper_model not in {"tiny", "base", "small", "medium", "turbo", "large-v3"}:
+            raise ValueError("WHISPER_MODEL must be a multilingual Whisper model")
+        if settings.whisper_device not in {"auto", "cpu", "cuda"}:
+            raise ValueError("WHISPER_DEVICE must be auto, cpu or cuda")
         if settings.gather_ai_provider not in {"local", "deepgram"}:
             raise ValueError("GATHER_AI_PROVIDER must be local or deepgram")
         if settings.phone_voice_provider not in {"twilio", "eleven_labs"}:
