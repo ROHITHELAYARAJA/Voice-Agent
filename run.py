@@ -87,6 +87,8 @@ async def live_check(settings: Settings) -> bool:
             )
         if settings.call_mode == "gather":
             await runtime.phone.check()
+        elif settings.stream_stt_provider == "whisper":
+            await runtime.bridge.check()
         else:
             await runtime.phone.voice.prewarm(["Hello. This is Buddy, your AI check-in companion."])
             from buddy.deepgram_ai import DeepgramAI
