@@ -33,6 +33,9 @@ class BuddyRuntime:
         self.telephony = TwilioClient(settings, self.http)
         self.bridge = VoiceBridge(settings, self.store, self.checkin, self.sheets)
         self.phone = PhoneConversation(self)
+        if settings.call_mode == "stream" and settings.stream_stt_provider == "whisper":
+            from buddy.whisper_bridge import WhisperBridge
+            self.bridge = WhisperBridge(self)
         self.call_lock = asyncio.Lock()
         self.worker = None
         self.call_worker = None
