@@ -1,4 +1,5 @@
 import logging
+import secrets
 import time
 from contextlib import asynccontextmanager
 
@@ -66,11 +67,36 @@ def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = 
             + request.url.path
             + (f"?{request.url.query}" if request.url.query else "")
         )
-        if not RequestValidator(settings.twilio_auth_token).validate(
-            url, form, request.headers.get("x-twilio-signature", "")
+        signature = request.headers.get("x-twilio-signature", "")
+        trial_authenticated = False
+        if (
+            not signature
+            and settings.call_mode == "gather"
+            and runtime.telephony.account_type == "Trial"
+        ):
+            session_id = request.query_params.get("session_id", "")
+            token = request.query_params.get("webhook_token", "")
+            try:
+                bound_session = runtime.store.get(session_id)
+            except KeyError:
+                bound_session = None
+            trial_authenticated = bool(
+                bound_session
+                and token
+                and len(token) <= 128
+                and secrets.compare_digest(token, bound_session["stream_token"])
+                and bound_session["call_sid"] == form.get("CallSid")
+                and form.get("To") == settings.owner_phone_number
+                and bound_session["call_status"]
+                in {"starting", "queued", "initiated", "ringing", "in-progress"}
+            )
+        if not trial_authenticated and not RequestValidator(settings.twilio_auth_token).validate(
+            url, form, signature
         ):
             raise HTTPException(403, "Invalid Twilio signature.")
-        if form.get("AccountSid") != settings.twilio_account_sid:
+        if form.get("AccountSid") != settings.twilio_account_sid and not (
+            trial_authenticated and not form.get("AccountSid")
+        ):
             raise HTTPException(403, "Twilio account mismatch.")
         return form
 
