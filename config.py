@@ -95,6 +95,27 @@ class Settings:
         if os.getenv("DATA_DIR"):
             values["data_dir"] = Path(os.environ["DATA_DIR"]).expanduser().resolve()
         settings = cls(**values)
+        if settings.call_mode not in {"gather", "stream"}:
+            raise ValueError("CALL_MODE must be gather or stream")
+        if settings.gather_ai_provider not in {"local", "deepgram"}:
+            raise ValueError("GATHER_AI_PROVIDER must be local or deepgram")
+        if settings.phone_voice_provider not in {"twilio", "eleven_labs"}:
+            raise ValueError("PHONE_VOICE_PROVIDER must be twilio or eleven_labs")
+        if settings.tts_connection not in {"managed", "byo"}:
+            raise ValueError("TTS_CONNECTION must be managed or byo")
+        if ":cloud" in settings.local_model or not settings.local_model.strip():
+            raise ValueError("LOCAL_MODEL must name a downloaded local model")
+        local_url = urlparse(settings.local_ai_url)
+        if (
+            local_url.scheme != "http"
+            or local_url.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or local_url.username
+            or local_url.password
+            or local_url.path
+            or local_url.query
+            or local_url.fragment
+        ):
+            raise ValueError("LOCAL_AI_URL must be a loopback HTTP address")
         if settings.sheet_backend not in {"excel", "google"}:
             raise ValueError("SHEET_BACKEND must be excel or google")
         if settings.excel_path.suffix.lower() != ".xlsx":
@@ -106,6 +127,8 @@ class Settings:
             raise ValueError("MAX_CALL_SECONDS must be between 60 and 3600")
         if not 30 <= settings.silence_timeout_seconds <= 600:
             raise ValueError("SILENCE_TIMEOUT_SECONDS must be between 30 and 600")
+        if not 1 <= settings.phone_speech_timeout <= 5:
+            raise ValueError("PHONE_SPEECH_TIMEOUT must be between 1 and 5 seconds")
         if not re.fullmatch(r"[A-Z]{3}", settings.currency):
             raise ValueError("CURRENCY must be a three-letter uppercase code")
         if not settings.google_sheet_tab or any(c in settings.google_sheet_tab for c in "[]:*?/\\"):
