@@ -1,7 +1,7 @@
 [project]
 name = "voice-agent"
 version = "1.0.0"
-description = "Terminal daily check-in calls with Twilio, Deepgram and local Excel storage"
+description = "Terminal daily check-in calls with Twilio, Deepgram, Jessica and Excel storage"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
