@@ -164,16 +164,19 @@ class PhoneConversation:
         action = f"{self.settings.public_url}/answer?session_id={session_id}&turn={turn}"
         if self.runtime.telephony.account_type == "Trial":
             action += "&webhook_token=" + self.store.get(session_id)["stream_token"]
-        gather = response.gather(
-            input="speech dtmf",
-            action=action,
-            method="POST",
-            language=self.settings.phone_language,
-            speech_timeout=self.settings.phone_speech_timeout,
-            timeout=8,
-            num_digits=1,
-            action_on_empty_result=True,
-        )
+        gather_kwargs = {
+            "input": "speech dtmf",
+            "action": action,
+            "method": "POST",
+            "language": self.settings.phone_language,
+            "speech_timeout": self.settings.phone_speech_timeout,
+            "timeout": 8,
+            "num_digits": 1,
+            "action_on_empty_result": True,
+        }
+        if self.settings.phone_speech_model and self.settings.phone_speech_model != "default":
+            gather_kwargs["speech_model"] = self.settings.phone_speech_model
+        gather = response.gather(**gather_kwargs)
         if (
             section == "review"
             and prompt == self.summary(session_id)
