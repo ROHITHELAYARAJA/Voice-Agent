@@ -5,16 +5,12 @@ import logging
 import sys
 import threading
 
-import httpx
 import uvicorn
-import websockets
 
-from buddy.bridge import DEEPGRAM_URL
 from buddy.excel import ExcelClient
 from buddy.logging import configure_logging
 from buddy.runtime import BuddyRuntime
 from buddy.sheets import IntegrationError, SheetsClient
-from buddy.telephony import TwilioClient
 from config import Settings
 from main import create_app
 from tunnel import start_tunnel_async
@@ -24,11 +20,33 @@ logger = logging.getLogger("SYSTEM")
 
 def print_status(settings: Settings) -> None:
     logger.info("Buddy | terminal-only daily voice check-in")
-    logger.info(
-        "Listen: Deepgram Flux | Think: %s | Speak: ElevenLabs Jessica (%s)",
-        settings.llm_model,
-        settings.tts_model,
-    )
+    if settings.call_mode == "gather":
+        ai = (
+            settings.llm_model + " via Deepgram"
+            if settings.gather_ai_provider == "deepgram"
+            else "local " + settings.local_model
+        )
+        voice = (
+            "ElevenLabs Jessica (" + settings.tts_model + ") via Deepgram"
+            if settings.phone_voice_provider == "eleven_labs"
+            else settings.phone_voice
+        )
+        logger.info("Listen: Twilio speech | Think: %s | Speak: %s", ai, voice)
+        logger.info("Call mode: one question at a time | trial-compatible Gather + Play")
+    else:
+        logger.info(
+            "Listen: Deepgram Flux | Think: %s | Speak: ElevenLabs Jessica (%s)",
+            settings.llm_model,
+            settings.tts_model,
+        )
+    if (
+        settings.gather_ai_provider == "deepgram"
+        or settings.phone_voice_provider == "eleven_labs"
+        or settings.call_mode == "stream"
+    ):
+        logger.info(
+            "Deepgram usage applies to your project credits; trial phone usage remains with Twilio"
+        )
     logger.info("Timezone: %s | Currency: %s", settings.timezone, settings.currency)
     missing = settings.missing_call_settings()
     logger.info(
@@ -47,117 +65,41 @@ def print_status(settings: Settings) -> None:
 
 
 async def live_check(settings: Settings) -> bool:
+    runtime = BuddyRuntime(settings)
     ok = True
-    async with httpx.AsyncClient(timeout=20) as http:
-        try:
-            response = await http.get("https://agent.deepgram.com/v1/agent/settings/think/models")
-            response.raise_for_status()
-
-            def find_models(value):
-                if isinstance(value, dict):
-                    yield value
-                    for item in value.values():
-                        yield from find_models(item)
-                elif isinstance(value, list):
-                    for item in value:
-                        yield from find_models(item)
-
-            models = list(find_models(response.json()))
-            available = any(
-                model.get("id") == settings.llm_model
-                and model.get("provider") == settings.llm_provider
-                for model in models
+    try:
+        account = await runtime.telephony.check_account()
+        logging.getLogger("TWILIO").info("Account accepted | %s", account)
+        if settings.call_mode == "stream" and account == "Trial":
+            raise IntegrationError(
+                "Twilio trial blocks Media Streams. Use CALL_MODE=gather with Deepgram and Jessica."
             )
-            logging.getLogger("DEEPGRAM").info(
-                "Live model catalog: %s | %s",
-                settings.llm_model,
-                "available" if available else "not available",
-            )
-            ok = ok and available
-        except (httpx.HTTPError, ValueError):
-            logger.error("Could not check Deepgram's model catalog")
-            ok = False
-        if settings.deepgram_api_key:
-            try:
-                async with websockets.connect(
-                    DEEPGRAM_URL,
-                    additional_headers={"Authorization": f"Token {settings.deepgram_api_key}"},
-                    open_timeout=15,
-                    close_timeout=3,
-                ) as agent:
-                    event = json.loads(await asyncio.wait_for(agent.recv(), timeout=10))
-                    if event.get("type") != "Welcome":
-                        raise ValueError("Missing welcome event")
-                    logging.getLogger("DEEPGRAM").info(
-                        "API key accepted | Voice Agent WebSocket connected"
-                    )
-            except Exception:
-                logging.getLogger("DEEPGRAM").error(
-                    "Authentication check failed; inspect the Deepgram key and network"
-                )
-                ok = False
+        if settings.call_mode == "gather":
+            await runtime.phone.check()
         else:
-            ok = False
-        if settings.elevenlabs_api_key:
+            await runtime.phone.voice.prewarm(["Hello. This is Buddy, your AI check-in companion."])
+            from buddy.deepgram_ai import DeepgramAI
+
+            agent = DeepgramAI(settings, runtime.http)
             try:
-                response = await http.get(
-                    f"https://api.elevenlabs.io/v1/voices/{settings.tts_voice}",
-                    headers={"xi-api-key": settings.elevenlabs_api_key},
-                )
-                response.raise_for_status()
-                voice = response.json().get("name", "")
-                logging.getLogger("ELEVENLABS").info(
-                    "Voice accessible | %s", voice or "configured voice"
-                )
-                if "jessica" not in voice.lower():
-                    logging.getLogger("ELEVENLABS").warning(
-                        "The configured voice is not named Jessica. Check TTS_VOICE_ID."
-                    )
-            except (httpx.HTTPError, ValueError):
-                logging.getLogger("ELEVENLABS").error(
-                    "Jessica voice check failed; check the ElevenLabs key and voice access"
-                )
-                ok = False
-        else:
-            logging.getLogger("ELEVENLABS").warning(
-                "Voice access cannot be checked until ELEVENLABS_API_KEY is configured"
-            )
-            ok = False
-        if settings.twilio_account_sid and settings.twilio_auth_token:
-            try:
-                account_type = await TwilioClient(settings, http).check_account()
-                logging.getLogger("TWILIO").info("Account credentials accepted | %s", account_type)
-                if account_type == "Trial":
-                    logging.getLogger("TWILIO").warning(
-                        "Buddy phone audio requires Media Streams, which Twilio's current trial rules block. See https://www.twilio.com/docs/usage/trials/try-out-voice#blocked-verbs"
-                    )
-                    ok = False
-            except IntegrationError as exc:
-                logging.getLogger("TWILIO").error("Account check failed: %s", exc)
-                ok = False
-        if settings.sheet_backend == "excel":
-            store = BuddyRuntime(settings)
-            try:
-                await ExcelClient(settings).initialize(store.store)
-                logging.getLogger("SHEETS").info(
-                    "Local Excel storage ready | %s", settings.excel_path
-                )
-            except IntegrationError as exc:
-                logging.getLogger("SHEETS").error("%s", exc)
-                ok = False
+                await agent.check()
             finally:
-                await store.http.aclose()
-        elif not settings.missing_google_settings():
-            try:
-                await SheetsClient(settings, http).request(
-                    "GET", params={"fields": "spreadsheetId"}
-                )
-                logging.getLogger("SHEETS").info(
-                    "Google authentication accepted | spreadsheet accessible"
-                )
-            except IntegrationError as exc:
-                logging.getLogger("SHEETS").error("%s", exc)
-                ok = False
+                await agent.close()
+        if settings.sheet_backend == "excel":
+            await ExcelClient(settings).initialize(runtime.store)
+            logging.getLogger("SHEETS").info("Excel ready | %s", settings.excel_path)
+        elif settings.missing_google_settings():
+            raise IntegrationError("Google Sheets settings are missing")
+        else:
+            await SheetsClient(settings, runtime.http).request(
+                "GET", params={"fields": "spreadsheetId"}
+            )
+    except IntegrationError as exc:
+        logger.error("%s", exc)
+        ok = False
+    finally:
+        await runtime.phone.close()
+        await runtime.http.aclose()
     return ok
 
 
@@ -306,7 +248,7 @@ async def serve(settings: Settings, args) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Buddy terminal voice check-ins: ngrok + Twilio + Deepgram + local Excel"
+        description="Buddy terminal voice check-ins: Twilio + local AI + Excel"
     )
     parser.add_argument(
         "--call", action="store_true", help="Call your configured number after startup"
