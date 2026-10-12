@@ -21,6 +21,16 @@ class Settings:
     twilio_phone_number: str = ""
     owner_phone_number: str = ""
     owner_name: str = "Rohith"
+    call_mode: str = "gather"
+    gather_ai_provider: str = "local"
+    phone_voice_provider: str = "twilio"
+    local_model: str = "qwen3:1.7b"
+    local_ai_url: str = "http://127.0.0.1:11434"
+    local_ai_timeout: float = 3.5
+    phone_voice: str = "Polly.Aditi"
+    phone_language: str = "en-IN"
+    phone_speech_timeout: int = 1
+    gather_max_turns: int = 10
     sheet_backend: str = "excel"
     excel_file: str = ""
     google_sheet_id: str = ""
@@ -30,10 +40,11 @@ class Settings:
     currency: str = "INR"
     port: int = 8000
     data_dir: Path = ROOT / "data"
-    llm_provider: str = "google"
-    llm_model: str = "gemini-3.8-flash"
+    llm_provider: str = "open_ai"
+    llm_model: str = "gpt-4.1-mini"
     tts_provider: str = "eleven_labs"
     tts_model: str = "eleven_turbo_v2_5"
+    tts_connection: str = "managed"
     tts_voice: str = "cgSgspJ2msm6clMCkdW9"
     max_call_seconds: int = 900
     silence_timeout_seconds: int = 120
@@ -49,6 +60,13 @@ class Settings:
             "twilio_phone_number": "TWILIO_PHONE_NUMBER",
             "owner_phone_number": "OWNER_PHONE_NUMBER",
             "owner_name": "OWNER_NAME",
+            "call_mode": "CALL_MODE",
+            "gather_ai_provider": "GATHER_AI_PROVIDER",
+            "phone_voice_provider": "PHONE_VOICE_PROVIDER",
+            "local_model": "LOCAL_MODEL",
+            "local_ai_url": "LOCAL_AI_URL",
+            "phone_voice": "PHONE_VOICE",
+            "phone_language": "PHONE_LANGUAGE",
             "sheet_backend": "SHEET_BACKEND",
             "excel_file": "EXCEL_FILE",
             "google_sheet_id": "GOOGLE_SHEET_ID",
@@ -60,12 +78,18 @@ class Settings:
             "llm_model": "LLM_MODEL",
             "tts_provider": "TTS_PROVIDER",
             "tts_model": "TTS_MODEL",
+            "tts_connection": "TTS_CONNECTION",
             "tts_voice": "TTS_VOICE_ID",
         }
         values = {
             field: os.environ[name].strip() for field, name in names.items() if name in os.environ
         }
-        for field_name in ("port", "max_call_seconds", "silence_timeout_seconds"):
+        for field_name in (
+            "port",
+            "max_call_seconds",
+            "silence_timeout_seconds",
+            "phone_speech_timeout",
+        ):
             if field_name.upper() in os.environ:
                 values[field_name] = int(os.environ[field_name.upper()])
         if os.getenv("DATA_DIR"):
