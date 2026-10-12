@@ -2,6 +2,7 @@ import json
 
 from buddy.models import AnswerInput, CompleteInput, EndInput
 from buddy.provider_schema import tool_schema
+from buddy.language import LANGUAGE_RULES
 from config import Settings
 
 PROMPT = """You are Buddy, {owner_name}'s friendly, calm AI companion for a daily phone check-in.
@@ -89,6 +90,7 @@ def build_agent_settings(settings: Settings, state: dict, transport: str = "twil
         currency=settings.currency,
         state=json.dumps(state, ensure_ascii=False),
     )
+    prompt += "\n" + LANGUAGE_RULES + "\nConfigured response language: " + settings.conversation_language
     if state["next_section"] == "consent":
         greeting = (
             f"Hi {settings.owner_name}, it's Buddy, your AI companion. Ready for a quick check-in?"
