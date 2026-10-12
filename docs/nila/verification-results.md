@@ -60,3 +60,11 @@ The current deployed API does not yet expose the new scheduler route. Its redepl
 After the owner reported the redeployment as Live, public checks found that `https://nila-api-stage.onrender.com/health` returns HTTP 404. The actual API at `https://nila-api-staging.onrender.com/health` returns HTTP 200, but without the new scheduler version marker. Its authenticated scheduler verification returns a Fastify route-not-found HTTP 404. The voice service's health endpoint returns HTTP 200.
 
 Prepared cloud environment files and the Supabase Vault API origin now point to the verified API address ending in `staging`. All four Cron jobs remain paused pending deployment of the scheduler endpoint. No scheduled telephone call or Render service deletion has occurred. Strict TypeScript passed again after improving the setup command's timeout and failure diagnostics.
+
+## Live Supabase scheduler activation
+
+After the next owner-approved Render redeployment, the API health endpoint returned HTTP 200 with `scheduler: supabase-cron-v1`. The authenticated non-dialing verification passed, and the setup command enabled all four Supabase Cron jobs. Vault uses the verified API origin and the matching internal service secret.
+
+An automatic `nila-calls` Cron run at 17:49 UTC on 12 October 2026 succeeded. Its queued HTTP request returned HTTP 200 with `calls=paused`. Additional requests dispatched through Supabase returned HTTP 200 with `calls=paused`, `reconcile=completed`, and `recaps=completed`, without timeouts or errors. Platform calling remains disabled and there are no enabled user schedules. No telephone call was placed.
+
+The hourly retention function executed successfully inside a rolled-back transaction, preserving existing data during verification. The hourly recap and retention jobs are enabled; their future timed runs have not yet been observed. Real telephone delivery still requires completed onboarding, informed consent, enabled calling and a separately authorized call test. No existing Render service was deleted or suspended through its dashboard.
