@@ -47,6 +47,31 @@ class PhoneConversation:
         self.voice = VoiceAudio(self.settings, self.store)
         self.lock = asyncio.Lock()
 
+    async def check(self):
+        self.voice.tokens.clear()
+        if self.settings.phone_voice_provider == "eleven_labs":
+            await self.voice.prewarm(
+                [
+                    self.CONSENT,
+                    self.RESUME,
+                    self.SILENCE,
+                    self.MODEL_ERROR,
+                    self.DECLINE,
+                    self.STOP,
+                    self.REVIEW_PAUSE,
+                    self.COMPLETE,
+                    self.REVIEW_START,
+                    self.REVIEW_CONFIRM,
+                    *self.CLARIFICATIONS.values(),
+                    *list(QUESTIONS.values())[1:],
+                ]
+            )
+        await self.ai.check()
+
+    async def close(self):
+        await self.ai.close()
+        await self.voice.close()
+
     def say(self, response, text: str, session_id: str) -> None:
         if self.settings.phone_voice_provider == "eleven_labs":
             response.play(self.voice.register(session_id, text))
@@ -347,4 +372,3 @@ class PhoneConversation:
                 else "I've updated that answer. " + record["question"],
             )
         return self.question(session_id, call_sid, turn + 1)
-
