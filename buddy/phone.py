@@ -5,6 +5,7 @@ import re
 from twilio.twiml.voice_response import VoiceResponse
 
 from buddy.deepgram_ai import DeepgramAI
+from buddy.language import TAMIL_CLARIFICATIONS, TAMIL_LABELS, TAMIL_MESSAGES, TAMIL_QUESTIONS
 from buddy.local_ai import Interpretation, LocalAI
 from buddy.models import QUESTIONS, AnswerInput, CompleteInput, EndInput, Section
 from buddy.sheets import IntegrationError
@@ -41,6 +42,12 @@ class PhoneConversation:
         self.settings = runtime.settings
         self.store = runtime.store
         self.checkin = runtime.checkin
+        self.questions = {section.value: text for section, text in QUESTIONS.items()}
+        if self.settings.conversation_language == "ta":
+            for name, value in TAMIL_MESSAGES.items():
+                setattr(self, name, value)
+            self.questions.update(TAMIL_QUESTIONS)
+            self.CLARIFICATIONS = TAMIL_CLARIFICATIONS
         self.ai = (DeepgramAI if self.settings.gather_ai_provider == "deepgram" else LocalAI)(
             self.settings, runtime.http
         )
@@ -63,7 +70,7 @@ class PhoneConversation:
                     self.REVIEW_START,
                     self.REVIEW_CONFIRM,
                     *self.CLARIFICATIONS.values(),
-                    *list(QUESTIONS.values())[1:],
+                    *(text for section, text in self.questions.items() if section != "consent"),
                 ]
             )
         await self.ai.check()
@@ -152,7 +159,7 @@ class PhoneConversation:
             elif section == "consent":
                 prompt = self.CONSENT
             else:
-                prompt = state["next_question"]
+                prompt = self.questions[section]
         response = VoiceResponse()
         action = f"{self.settings.public_url}/answer?session_id={session_id}&turn={turn}"
         if self.runtime.telephony.account_type == "Trial":
