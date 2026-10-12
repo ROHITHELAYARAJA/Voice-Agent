@@ -9,7 +9,10 @@ export const environment = z.object({
     .refine((v) => Buffer.from(v, "base64").length === 32),
   VOICE_SESSION_SECRET: z.string().min(32),
   INTERNAL_SERVICE_SECRET: z.string().min(32),
-  VOICE_PUBLIC_URL: z.url().refine((v) => new URL(v).protocol === "https:"),
+  VOICE_PUBLIC_URL: z.url({
+    protocol: /^https$/,
+    error: "Set VOICE_PUBLIC_URL to the Render voice service HTTPS address",
+  }),
   WEB_ORIGIN: z.url(),
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z
@@ -18,5 +21,14 @@ export const environment = z.object({
 });
 export type Environment = z.infer<typeof environment>;
 export function configuration() {
-  return environment.parse(process.env);
+  const result = environment.safeParse(process.env);
+  if (!result.success) {
+    const fields = [
+      ...new Set(result.error.issues.map((issue) => issue.path.join("."))),
+    ];
+    throw new Error(
+      `Invalid or missing environment settings: ${fields.join(", ")}. Set them in Render's Environment settings and redeploy.`,
+    );
+  }
+  return result.data;
 }
