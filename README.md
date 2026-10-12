@@ -1,8 +1,8 @@
-# Buddy: terminal daily check-in calls
+# Buddy: telephone check-ins with Deepgram and Jessica
 
-Buddy calls your configured phone number, asks about your day one question at a time, and saves answers and conversation logs to a local Excel file. Your computer runs the server. Everything runs from the terminal: no UI and no browser dashboard. Excel storage needs no Google account, billing account, credentials or Excel installation.
+Buddy calls your configured number, asks about your day one question at a time, and writes answers and conversation logs to local Excel. Your computer runs the server and storage; the terminal shows each question, spoken answer, interpretation and save result.
 
-The configured pipeline is **Twilio Voice → ngrok → FastAPI → Deepgram Flux → Gemini 3.8 Flash → ElevenLabs Jessica**. The live Deepgram model catalog was checked on October 11, 2026 and included `gemini-3.8-flash`. Jessica uses voice ID `cgSgspJ2msm6clMCkdW9` through ElevenLabs' authenticated streaming endpoint and `eleven_turbo_v2_5`.
+The configured pipeline is **Twilio speech input -> authenticated ngrok webhook -> Deepgram Voice Agent / GPT-4.1 Mini -> ElevenLabs Jessica audio via Deepgram -> SQLite -> Excel**. `CALL_MODE=gather` uses supported trial Gather and Play features. Twilio captures speech; the saved Deepgram key provides managed reasoning and Jessica (`eleven_turbo_v2_5`, voice `cgSgspJ2msm6clMCkdW9`). No separate OpenAI or ElevenLabs key is required with `TTS_CONNECTION=managed`. Provider usage consumes Deepgram project credits; telephone usage remains with Twilio.
 
 ## Start
 
@@ -11,103 +11,89 @@ Open PowerShell in this project's actual directory:
 ```powershell
 Set-Location -LiteralPath 'C:\Users\erohi\OneDrive\Desktop\Voice-Agent'
 uv sync
-uv run python setup.py
 uv run python run.py --doctor --live-check
 uv run python run.py --call
 ```
 
-Setup keeps existing `.env` values when you press Enter. Secret input is hidden. Your existing ngrok and Deepgram keys stay in place. Never replace `.env` with the example if you already have keys saved.
+Saved Twilio and ngrok credentials stay in `.env`. Use `uv run python setup.py` when preferences or credentials need updating; Enter keeps saved values and secret input is hidden.
 
-`run.py` starts the local bridge and ngrok together, uses the actual tunnel URL for Twilio callbacks, and calls your number when `--call` is supplied. It stays running for further terminal commands. Without `--call`, it starts the connections and waits for your commands. Calls are manual; no schedule runs in the background.
+Phone recognition waits one second after speech stops; set `PHONE_SPEECH_TIMEOUT=2` if you prefer longer thinking pauses. Buddy prepares reusable Jessica audio and checks real model interpretation before dialing. GPT-4.1 Mini uses managed tool calls with server validation. GPT-6 remains an optional model with its required reasoning compatibility settings. Calls are manual. No scheduler places calls automatically. An initial call failure leaves Buddy and ngrok online.
 
-## Required configuration
+## Configuration
 
-| Variable | What to provide |
+| Variable | Purpose |
 | --- | --- |
-| `NGROK_AUTHTOKEN` | Your ngrok token |
-| `DEEPGRAM_API_KEY` | A Deepgram key with Voice Agent access |
-| `TWILIO_ACCOUNT_SID` | Your Twilio account SID |
-| `TWILIO_AUTH_TOKEN` | Your Twilio auth token, also used to validate callbacks |
-| `TWILIO_PHONE_NUMBER` | A voice-capable Twilio number in international format |
-| `OWNER_PHONE_NUMBER` | Your own number, including `+` and country code |
-| `ELEVENLABS_API_KEY` | An ElevenLabs key with TTS permission and access to Jessica |
+| `CALL_MODE=gather` | Question-by-question phone conversation |
+| `GATHER_AI_PROVIDER=deepgram`, `DEEPGRAM_API_KEY` | Managed, validated answer interpretation |
+| `PHONE_VOICE_PROVIDER=eleven_labs`, `TTS_CONNECTION=managed` | Jessica through the Deepgram key |
+| `LLM_PROVIDER=open_ai`, `LLM_MODEL=gpt-4.1-mini` | Requested reasoning model |
+| `TTS_MODEL=eleven_turbo_v2_5` | Requested Jessica model |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | Account authentication and signed webhooks |
+| `TWILIO_PHONE_NUMBER` | Assigned calling number |
+| `OWNER_PHONE_NUMBER` | Verified destination in international format |
+| `NGROK_AUTHTOKEN` | Public HTTPS connection to this computer |
+| `LOCAL_MODEL=qwen3:1.7b` | Downloaded Ollama model |
+| `LOCAL_AI_URL=http://127.0.0.1:11434` | Loopback model service |
+| `PHONE_LANGUAGE=en-IN` | Twilio speech recognition language |
+| `PHONE_SPEECH_TIMEOUT=1` | Seconds of silence that end an answer; 1-5 allowed |
+| `PHONE_VOICE=Polly.Aditi` | Voice when the optional Twilio voice provider is selected |
+| `SHEET_BACKEND=excel` | Default local spreadsheet copy |
+| `EXCEL_FILE` | Optional `.xlsx` path; defaults to `data/Buddy Daily Check-ins.xlsx` |
+| `TIMEZONE=Asia/Kolkata`, `CURRENCY=INR` | Date and default currency |
 
-The default `SHEET_BACKEND=excel` saves to `data/Buddy Daily Check-ins.xlsx`. Optionally set `EXCEL_FILE` to a different `.xlsx` file path. Setup no longer asks for Google credentials.
+## Conversation and saving
 
-Google Sheets is an optional integration: install it with `uv sync --extra google-sheets`, set `SHEET_BACKEND=google`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_FILE` and optionally `GOOGLE_SHEET_TAB=Buddy Checkins` in `.env`. Enable its API and share the sheet with the service account as Editor. Leave the backend as Excel to avoid all Google setup.
+Buddy asks permission, then covers accomplishments, learning, spending, income, wellbeing, tomorrow and other notes. It reads a summary and requires explicit confirmation before completion. Say a correction to replace an earlier answer, skip to skip a question, or ask to stop. Press 1 to approve consent or final review; press 2 to decline consent, skip a regular question, or pause final review.
 
-Defaults: English, `Asia/Kolkata`, INR, your name Rohith, a 15-minute call limit and a 120-second conversation silence limit. Change them in `.env`. `.env.example` lists all available settings. Jessica availability depends on your ElevenLabs account; the live diagnostic checks the configured voice instead of silently choosing another one.
+The opening is a short friendly greeting without a recording announcement. Buddy does not request telephone recordings from Twilio. Any announcement preceding Buddy is outside this application. A clear answer is enough; plans and unfinished work remain labelled by the user's own words. At most one targeted clarification is asked per topic. If still unresolved, Buddy preserves the raw context, excludes unknown money from totals, and advances. Review remains mandatory; unresolved review or repeated silence pauses instead of looping.
 
-Buddy checks the Twilio account type before dialing. Trial accounts use only `To`, `From` and `Url`; optional call parameters can cause HTTP 400 with error code 0. Full accounts retain status callbacks, ringing timeout and a call time limit. Buddy also checks active call status every three seconds, so an unanswered trial call releases the call slot and updates Excel. Call errors include the HTTP status, Twilio code and provider message. A rejected initial call leaves Buddy and ngrok online for terminal commands.
+Speech is committed before AI interpretation. Model responses are validated before changing an answer. Unknown or estimated amounts remain in notes and are excluded from confirmed totals. Repeated webhook delivery reuses a saved response without duplicating answers or money. Model failure pauses the call, retains its transcript, and leaves the check-in unfinished. Resume asks fresh permission and repeats unanswered questions; a transcript alone is not treated as a validated answer.
 
-Twilio's [current trial rules](https://www.twilio.com/docs/usage/trials/try-out-voice#blocked-verbs) block `<Stream>`, which this phone-to-Deepgram pipeline requires. A trial call can be accepted and ring without connecting the AI conversation. Buddy warns before trial calls, and `--doctor --live-check` reports this limitation. A Twilio account with Media Streams enabled is required for the complete phone conversation; changing API keys or Python dependencies cannot enable a blocked account feature. Verify your destination number for trial calls and check geographic permissions. Calls and provider usage are subject to your provider accounts' credits and pricing.
+The server recognizes explicit stop requests independently of the model. Expense and income amounts must also match numeric or English number evidence from your answer, the current clarification, or a saved entry being corrected. Unsupported or uncertain amounts trigger clarification. The final spoken readback remains mandatory.
+
+Full-account webhooks use Twilio signatures. The current trial proxy omits that header; Buddy authenticates outbound trial callbacks using a unique call secret, the bound call ID, your number, and active call status. Secrets rotate on resume and are excluded from terminal logs. HTTP failures now appear under WEBHOOK with method, path, status and response time.
+
+SQLite is the authoritative record. Excel is written atomically in the background. If the workbook is locked, close it and use `sync`; answers remain in SQLite. The summary has these 18 columns: Check-in ID, Date, Status, Accomplishments, Learning, Spending notes, Spending totals, Expenses, Income notes, Income totals, Income entries, Wellbeing, Tomorrow, Notes, Skipped sections, Timezone, Updated at, Call status. Conversation Log contains Log ID, Check-in ID, Timestamp, Speaker, Message.
 
 ## Terminal commands
 
-| Command | Behavior |
-| --- | --- |
-| `call` | Start a new daily check-in call to your configured number |
-| `resume <check-in-id>` | Call again and continue an unfinished saved check-in |
-| `hangup` | End the active call while retaining saved answers |
-| `status` | Show configuration readiness and the active call |
-| `list` | Show the 20 most recent check-ins with IDs and sync status |
-| `show <check-in-id>` | Show its answers, money entries, totals and next question |
-| `sync` | Retry pending Excel writes, or Google updates if explicitly enabled |
-| `help` | Show commands |
-| `quit` | Stop the bridge, close ngrok and end any known active call |
+`call`, `resume <check-in-id>`, `hangup`, `status`, `list`, `show <check-in-id>`, `sync`, `help`, `quit`.
 
-Use the actual check-in ID printed in the logs with `resume` or `show`. A new call creates a new check-in; resuming updates the existing record. Multiple calls on a day are separate records, so avoid repeating the same transactions in a new check-in.
+`--non-interactive` runs with logs only. `--no-tunnel` uses an existing `PUBLIC_HOSTNAME`. Keep the computer awake and Buddy running throughout a call.
 
-Optional launch modes:
+## Trial limits
 
-```powershell
-uv run python run.py
-uv run python run.py --call --non-interactive
-uv run python run.py --no-tunnel
-```
+Twilio documents 75 voice minutes per trial, a 30-day trial, 10 minutes per call, a five-second webhook fetch timeout and 10 action/redirect hops. Speech recognition and text-to-speech are included in the trial allowance. Actual remaining minutes and eligibility belong to your account. See [trial allowance](https://www.twilio.com/docs/usage/trials) and [supported speech features and limits](https://www.twilio.com/docs/usage/trials/try-out-voice).
 
-`--non-interactive` shows logs with no command prompt; stop with Ctrl+C. `--no-tunnel` uses an existing tunnel or deployment specified by `PUBLIC_HOSTNAME`. `--domain` accepts your reserved ngrok domain. Outbound calls supply their own webhook URLs, so they require no Twilio Console webhook edit. For inbound calls, set your Twilio number's Voice webhook to the `/twiml` URL printed at startup using HTTP POST. Only the configured owner's caller number is accepted.
+Buddy allows at most 10 submitted answers per call, including silence, clarification and corrections. The normal flow fits that budget. Extra turns can end the call early; Buddy saves the partial check-in and asks you to resume manually. No follow-up call is placed automatically. Interpretation has a 3.5-second request deadline to leave time for the webhook response. Trial call-control APIs may reject terminal hangup; Buddy reports the provider message, while conversational TwiML ends with `<Hangup>`.
 
-## The conversation
+## Optional modes
 
-Buddy asks permission, then covers accomplishments, learning/progress, spending, income, wellbeing, tomorrow's priority, and extra notes. It asks one question at a time, clarifies unknown amounts, records skips explicitly, and supports corrections. It reads back a summary and asks for confirmation before marking the record complete.
+`CALL_MODE=stream` connects Twilio Media Streams directly to Deepgram Flux, GPT-4.1 Mini and Jessica. Twilio's current trial blocks Stream, so Buddy rejects this mode before dialing on a trial account. Direct telephone streaming requires µ-law at 8 kHz in both directions. The browser example in `outputs/agent-settings/browser.json` uses your requested linear16 48 kHz input and 24 kHz output, with the Buddy prompt and tools filled in. `Welcome` alone proves a connection; model and audio checks are separate.
 
-The call instructions in `buddy/agent.py` handle unclear yes/no answers, wrong recipients, voicemail, background speech, interruptions, repeated questions, forgotten details, several topics in one answer, corrections, ambiguous numbers, duplicate purchases, totals versus item lists, estimates, refunds, loans, transfers and events outside the check-in date. Buddy asks a focused clarification, preserves uncertainty, and respects an explicit skip or stop. Resumed calls ask fresh permission before discussing saved answers.
+To restore local reasoning and Twilio speech, set `GATHER_AI_PROVIDER=local` and `PHONE_VOICE_PROVIDER=twilio`, then run `uv run python setup_local.py`. Ollama is loopback-only and cloud models are rejected. Deepgram and Jessica are unused in that combination.
 
-Money sections include `details_complete` in the tool input. False means some amounts are unknown or estimated; those facts stay in the spending/income notes, and only confirmed exact amounts enter totals. The saved tool state identifies `incomplete_money_sections`. Spreadsheet notes display the incomplete flag without adding or changing columns. Final confirmation may approve a record containing explicitly unknown amounts; it never invents the missing amounts.
+Reusable Jessica questions and clarification prompts are cached in memory and on disk under `data/voice-cache`; cache keys include the model and voice. Personal answers and summaries remain in the bounded memory cache. Audio is pre-generated during the preceding question. Summary audio is split into faithful sections, prepared as answers are saved. Audio URLs contain random capabilities, expire after 15 minutes, bind to the specific call, and contain no transcript or credentials. The server omits audio URLs from request logs. Playback does not add redirect hops. Captured speech and interpretations remain durable in SQLite; model or audio failures do not invent completion.
 
-Money uses exact decimals. Different currencies have separate totals. It never treats a skipped spending question as a confirmed zero. The agent can only invoke defined tools; the service validates the section and tool input. Saved answers are restored when you resume after a dropped call. Speech extraction is still performed by an AI model; verify its read-back, especially amounts and names.
-
-## Deepgram credits
-
-Gemini is configured as Deepgram's managed Google model without a separate `think.endpoint` or Google API key. Deepgram's Voice Agent usage uses the balance associated with `DEEPGRAM_API_KEY`. New accounts advertise $200 of free credits: [Deepgram pricing](https://deepgram.com/pricing). A valid key and an available model do not prove the remaining balance is promotional credit.
-
-Check the account's Billing page in [Deepgram Console](https://console.deepgram.com/) for the actual remaining credit and auto-load settings. Keep auto-load disabled to avoid automatic top-ups. The configured key was verified for project and balance access on October 12, 2026. Balance checks are snapshots; usage reduces the remaining credit. Keys without billing permissions may return HTTP 403 even when Voice Agent access works. Deepgram credits do not pay for Twilio calls or Jessica's external ElevenLabs API usage: [ElevenLabs billing](https://elevenlabs.io/docs/overview/administration/billing).
-
-## Logs and data
-
-Logs carry local timestamps and labels: `[NGROK]`, `[TWILIO]`, `[DEEPGRAM]`, `[YOU]`, `[BUDDY]`, `[SAVE]`, and `[SHEETS]`. Each conversation line displayed under YOU or BUDDY is saved to SQLite and queued for Excel immediately. Credentials and complete provider settings are never logged. Operational connection logs remain in the terminal.
-
-The Excel file has two tabs: `Buddy Checkins` contains one row per check-in with daily sections, detailed expense/income JSON, totals by currency, skipped sections, status, timestamps and call status. `Conversation Log` contains timestamped speech with speaker and check-in ID. Corrections update the existing check-in, and retrying does not duplicate conversation lines. Speech beginning with `=` stays literal text rather than becoming an Excel formula.
-
-Writes use an atomic file replacement. If the file is locked while open in Excel, answers remain in `data/buddy.sqlite3`; close the workbook and enter `sync` to retry. Automatic retries use increasing delays up to five minutes. Keep the database backed up with the workbook. Treat the workbook as Buddy's generated record; make a copy for manual analysis. If the workbook is deleted, startup rebuilds it from the database. Google mode retains its fixed-row ownership checks and `RAW` writes; do not reorder or delete Google rows.
-
-This is a personal, single-process development application. Your computer must stay awake with Buddy and ngrok running for calls and spreadsheet updates. Local storage is free, while Twilio and AI provider usage is subject to their trial credits, free-tier limits and pricing. Ngrok exposes only health and signed phone endpoints; no public call-control interface is served.
+Google Sheets remains optional: install `uv sync --extra google-sheets`, then configure its spreadsheet ID, service-account file and `SHEET_BACKEND=google`. Excel needs no Google credentials, billing account, or Excel installation.
 
 ## Verification
 
 ```powershell
+uv run pytest -q --basetemp=outputs/pytest-phone-check
 uv run ruff check .
-uv run pytest -q
-uv run python run.py --doctor --live-check
+uv run python verify_deepgram.py
+uv run python verify_local.py
 ```
 
-Tests use simulated providers and temporary databases. They check question order, consent, confirmation, corrections, exact currency totals, persistence, tool replay, webhook authentication, outbound recipient restriction, interruptions, graceful audio playback, Excel conversation capture, locked-file retries, history recovery, literal formula-like text, protected headers and duplicate-safe Google retry after a lost response. Live diagnostics check model availability and provider access without placing a phone call. They do not prove a full phone conversation or successful speech synthesis.
+The updated Deepgram/Jessica configuration passed 55 regression tests and lint on 2026-10-12. The earlier GPT-6 configuration had a real answered telephone test that connected through the authenticated trial webhook, captured speech, and wrote nine conversation rows to the daily Excel workbook. That live check-in ended before final review, so it remains interrupted. The live connection receipt is in `outputs/deepgram-telephone-verification`.
 
-## Sources and architecture
+The previously verified local mode had 45 passing regression tests on 2026-10-12. A real outbound call captured all answers, received spoken final confirmation, and saved a completed daily check-in plus 19 conversation log rows. The isolated model test confirmed 200.00 INR with a maximum 1.64-second webhook response; the real call stayed below 2.3 seconds. Receipts are in `outputs/local-verification` and `outputs/telephone-verification`.
 
-Implementation follows the complete [Twilio and Deepgram Voice Agent guide](https://developers.deepgram.com/docs/twilio-and-deepgram-voice-agent), including bidirectional streams, mulaw 8 kHz audio and barge-in. The raw WebSocket bridge is an approach expressly described by that guide.
+The Deepgram verifier uses actual GPT-4.1 Mini inference, generates and fetches Jessica WAV audio, checks confirmed totals and an isolated Excel workbook, and writes its receipt to `outputs/deepgram-verification`. It simulates up to three seconds of playback per clip to represent the interval between telephone answers. It does not call your phone. Its latest successful run verified 200.00 INR, 28 audio responses, and a maximum 2.83-second webhook.
 
-Provider configuration is checked against [Deepgram LLM models](https://developers.deepgram.com/docs/voice-agent-llm-models), its [live model catalog](https://agent.deepgram.com/v1/agent/settings/think/models), [ElevenLabs integration settings](https://developers.deepgram.com/docs/voice-agent-tts-models), [function requests](https://developers.deepgram.com/docs/voice-agent-function-call-request), [Twilio stream messages](https://www.twilio.com/docs/voice/media-streams/websocket-messages), and [Google Sheets value updates](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/update).
+The speed checks compare model and voice providers in `outputs/latency-verification`. GPT-4.1 Mini was selected for response speed and reliable interpretation. Warm model interpretation was approximately 1.0-1.5 seconds in the final API run. Those times exclude the configurable telephone silence interval and network/provider variation. The full API-to-Excel check passes; the changed version has not yet been retested on a real telephone call.
 
-See `ARCHITECTURE.md` for the Archify-based implementation contract and ownership of each behavior.
+The local verifier uses actual model inference with signed simulated webhooks, checks confirmed totals, and creates an isolated workbook and receipt in `outputs/local-verification`. It does not call your phone or alter the daily workbook. Real phone verification requires an accepted call, audible prompt, captured speech and saved answer; authentication alone is insufficient.
+
+Architecture ownership and the retained Archify contract are in `ARCHITECTURE.md`. References: [Twilio Gather](https://www.twilio.com/docs/voice/twiml/gather), [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs), [Ollama chat API](https://docs.ollama.com/api/chat).
