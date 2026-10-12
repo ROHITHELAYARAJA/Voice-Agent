@@ -34,6 +34,7 @@ class VoiceAudio:
                 self.settings.tts_provider,
                 self.settings.tts_model,
                 self.settings.tts_voice,
+                self.settings.conversation_language,
                 "pcm24k-v1",
                 text,
             ]
