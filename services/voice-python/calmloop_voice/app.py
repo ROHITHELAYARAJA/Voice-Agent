@@ -34,15 +34,20 @@ class Environment:
     @classmethod
     def read(cls):
         load_dotenv(".env.calmloop")
-        values = [
-            os.environ[name]
-            for name in (
-                "API_INTERNAL_URL",
-                "VOICE_PUBLIC_URL",
-                "INTERNAL_SERVICE_SECRET",
-                "VOICE_SESSION_SECRET",
+        names = (
+            "API_INTERNAL_URL",
+            "VOICE_PUBLIC_URL",
+            "INTERNAL_SERVICE_SECRET",
+            "VOICE_SESSION_SECRET",
+        )
+        missing = [name for name in names if not os.environ.get(name, "").strip()]
+        if missing:
+            raise ValueError(
+                "Missing voice service environment settings: "
+                + ", ".join(missing)
+                + ". Add them in Render's Environment settings and redeploy."
             )
-        ]
+        values = [os.environ[name].strip() for name in names]
         if (
             not values[1].startswith("https://")
             or not (values[0].startswith("https://") or values[0].startswith("http://127.0.0.1:"))

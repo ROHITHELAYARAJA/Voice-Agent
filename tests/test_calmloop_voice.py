@@ -12,6 +12,23 @@ from calmloop_voice.conversation import Conversation, agent_settings
 from calmloop_voice.security import validate_stream, verify_capability
 
 
+def test_voice_startup_lists_missing_settings_without_revealing_secrets(monkeypatch):
+    from calmloop_voice import app
+
+    monkeypatch.setattr(app, "load_dotenv", lambda _: None)
+    monkeypatch.delenv("API_INTERNAL_URL", raising=False)
+    monkeypatch.setenv("VOICE_PUBLIC_URL", " ")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "private-test-secret")
+    monkeypatch.setenv("VOICE_SESSION_SECRET", "private-session-secret")
+    with pytest.raises(ValueError) as error:
+        app.Environment.read()
+    message = str(error.value)
+    assert "API_INTERNAL_URL, VOICE_PUBLIC_URL" in message
+    assert "Render's Environment" in message
+    assert "private-test-secret" not in message
+    assert "private-session-secret" not in message
+
+
 def context():
     return {
         "session": {"call_sid": "CA" + "a" * 32, "status": "in-progress"},
