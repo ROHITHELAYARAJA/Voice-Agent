@@ -8,6 +8,7 @@ import time
 
 import websockets
 from fastapi import WebSocket, WebSocketDisconnect
+from websockets.exceptions import ConnectionClosed
 
 from buddy.agent import build_agent_settings
 from buddy.checkin import CheckinService
@@ -86,7 +87,7 @@ class VoiceBridge:
                     json.dumps(build_agent_settings(self.settings, self.checkin.state(session_id)))
                 )
                 await self.relay(websocket, agent, session_id, start["streamSid"])
-        except (WebSocketDisconnect, websockets.exceptions.ConnectionClosed):
+        except (WebSocketDisconnect, ConnectionClosed):
             failure = "The audio connection closed. Your saved answers are available to resume."
         except TimeoutError:
             failure = "The call reached its time or silence limit. Your saved answers are available to resume."
