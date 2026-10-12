@@ -126,6 +126,8 @@ class BuddyRuntime:
                     )
             if self.settings.call_mode == "gather":
                 await self.phone.check()
+            elif self.settings.stream_stt_provider == "whisper":
+                await self.bridge.check()
             session = self.store.get(session_id) if session_id else self.new_session()
             if session["status"] in {"completed", "declined"}:
                 raise IntegrationError("This check-in is closed. Use call to start a new check-in.")
