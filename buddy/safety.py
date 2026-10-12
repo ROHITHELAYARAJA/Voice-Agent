@@ -16,6 +16,11 @@ SCALES = {"thousand": 1000, "lakh": 100000, "lakhs": 100000, "crore": 10000000, 
 def requests_stop(speech: str) -> bool:
     return bool(
         re.search(
+            r"(?:^|\s)(?:நிறுத்து|நிறுத்துங்க|நிறுத்துங்கள்|வேண்டாம்|வேணாம்|போதும்)(?:[.!?]|\s|$)|பிறகு பேச|அழைப்பை முடி|தவறான எண்|தவறான நபர்",
+            speech,
+        )
+    ) or bool(
+        re.search(
             r"\b(stop(?: the call| asking)?|end (?:the|this) call|hang up|not now|call me later|wrong (?:person|number)|leave (?:a|your) message)\b",
             speech.lower(),
         )
