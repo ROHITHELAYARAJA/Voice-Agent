@@ -58,11 +58,62 @@ def money_evidence(text: str) -> set[Decimal]:
         else:
             finish()
     finish()
+    tamil = {
+        "ஒன்று": 1,
+        "ஒன்னு": 1,
+        "ஒரு": 1,
+        "இரண்டு": 2,
+        "ரெண்டு": 2,
+        "மூன்று": 3,
+        "நான்கு": 4,
+        "நாலு": 4,
+        "ஐந்து": 5,
+        "ஆறு": 6,
+        "ஏழு": 7,
+        "எட்டு": 8,
+        "ஒன்பது": 9,
+        "பத்து": 10,
+        "பதினொன்று": 11,
+        "பன்னிரண்டு": 12,
+        "இருபது": 20,
+        "முப்பது": 30,
+        "நாற்பது": 40,
+        "ஐம்பது": 50,
+        "அறுபது": 60,
+        "எழுபது": 70,
+        "எண்பது": 80,
+        "தொண்ணூறு": 90,
+        "நூறு": 100,
+        "நூற்று": 100,
+        "இருநூறு": 200,
+        "இருநூற்று": 200,
+        "முன்னூறு": 300,
+        "நானூறு": 400,
+        "ஐந்நூறு": 500,
+        "ஐநூறு": 500,
+        "அறுநூறு": 600,
+        "எழுநூறு": 700,
+        "எண்ணூறு": 800,
+        "தொள்ளாயிரம்": 900,
+    }
+    total = current = 0
+    active = False
+    for word in re.findall(r"[\u0B80-\u0BFF]+", text):
+        if word in tamil:
+            current += tamil[word]
+            active = True
+        elif word in {"ஆயிரம்", "ஆயிரத்து", "லட்சம்", "லட்சத்து"}:
+            total += (current or 1) * (100000 if "லட்ச" in word else 1000)
+            current = 0
+            active = True
+        else:
+            finish()
+    finish()
     return values
 
 
 def uncertain_money(text: str) -> bool:
-    return bool(
+    return bool(re.search(r"சுமார்|தோராய|ஏறக்குறைய|ஒருவேளை|பணத்திருப்ப|திருப்பிக்|பரிமாற்ற", text)) or bool(
         re.search(
             r"\b(about|around|roughly|approximately|maybe|guess|estimated|refund|transfer|transferred|between)\b",
             text.lower(),
