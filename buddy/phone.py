@@ -206,15 +206,19 @@ class PhoneConversation:
         value = re.sub(r"[^a-z0-9 ]", " ", speech.lower()).strip()
         if value == "1":
             return True
-        if value == "2" or re.search(
-            r"\b(no|not|stop|later|busy|wrong|voicemail|cancel|don t|do not)\b", value
-        ):
+        if value == "2":
             return False
-        if re.search(r"\b(but|except|change|correction|actually|wait)\b", value):
+        if re.search(r"\b(but|except|change|correction|actually|wait)\b", value) or re.search(
+            r"ஆனால்|திருத்த|மாற்ற|மாற்றம்|பொறுங்கள்", speech
+        ):
             return None
         if re.search(
+            r"\b(no|not|stop|later|busy|wrong|voicemail|cancel|don t|do not)\b", value
+        ) or re.search(r"இல்லை|வேண்டாம்|வேணாம்|பிறகு|தவறான", speech):
+            return False
+        if re.search(
             r"\b(yes|yeah|yep|sure|okay|ok|agree|go ahead|please continue|please save)\b", value
-        ):
+        ) or re.search(r"ஆமாம்|ஆமாங்க|ஆம்|சரி|செய்யலாம்|தொடரலாம்|முடிக்கலாம்|சேமி", speech):
             return True
         return None
 
