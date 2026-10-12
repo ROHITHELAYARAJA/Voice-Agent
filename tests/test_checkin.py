@@ -107,13 +107,23 @@ def test_answers_survive_reopening_the_database(checkin):
 def test_agent_uses_requested_model_and_authenticated_jessica(settings, checkin):
     service, sid = checkin
     value = build_agent_settings(settings, service.state(sid))
-    assert value["agent"]["think"]["provider"]["model"] == "gemini-3.8-flash"
-    assert value["agent"]["think"]["provider"]["type"] == "google"
+    assert value["agent"]["think"]["provider"]["model"] == "gpt-4.1-mini"
+    assert value["agent"]["think"]["provider"]["type"] == "open_ai"
+    assert "reasoning_mode" not in value["agent"]["think"]["provider"]
     assert "endpoint" not in value["agent"]["think"]
     speak = value["agent"]["speak"]
-    assert "cgSgspJ2msm6clMCkdW9" in speak["endpoint"]["url"]
-    assert speak["endpoint"]["headers"]["xi-api-key"] == "test-elevenlabs"
-    assert "voice_id" not in speak["provider"]
+    assert speak["provider"] == {
+        "type": "eleven_labs",
+        "model_id": "eleven_turbo_v2_5",
+        "voice_id": "cgSgspJ2msm6clMCkdW9",
+    }
+    assert "endpoint" not in speak
+    assert value["audio"]["input"] == {"encoding": "mulaw", "sample_rate": 8000}
+    browser = build_agent_settings(settings, service.state(sid), transport="browser")
+    assert browser["audio"]["input"] == {"encoding": "linear16", "sample_rate": 48000}
+    settings.tts_connection = "byo"
+    byo = build_agent_settings(settings, service.state(sid))
+    assert byo["agent"]["speak"]["endpoint"]["headers"]["xi-api-key"] == "test-elevenlabs"
     assert all(function["defer_until_eot"] for function in value["agent"]["think"]["functions"])
 
 

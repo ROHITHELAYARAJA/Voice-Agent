@@ -14,6 +14,7 @@ def no_shutdown_network(monkeypatch):
 @pytest.fixture
 def settings(tmp_path):
     return Settings(
+        call_mode="stream",
         data_dir=tmp_path / "data",
         deepgram_api_key="test-deepgram",
         elevenlabs_api_key="test-elevenlabs",

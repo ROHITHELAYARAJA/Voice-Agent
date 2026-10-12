@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 from urllib.parse import parse_qs
 
 import httpx
@@ -121,7 +122,8 @@ def test_stream_token_and_call_binding(settings):
     asyncio.run(runtime.close())
 
 
-async def test_trial_uses_only_basic_fields_and_polls_terminal_status(settings, caplog):
+async def test_trial_uses_only_basic_fields_and_polls_terminal_status(settings):
+    settings.call_mode = "gather"
     requests = []
     call_status = "queued"
 
@@ -137,16 +139,18 @@ async def test_trial_uses_only_basic_fields_and_polls_terminal_status(settings, 
     await runtime.http.aclose()
     runtime.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     runtime.telephony.http = runtime.http
+    runtime.phone.ai.check = AsyncMock()
     try:
         session = await runtime.start_call()
         assert requests == [
             {
                 "To": [settings.owner_phone_number],
                 "From": [settings.twilio_phone_number],
-                "Url": [f"{settings.public_url}/twiml?session_id={session['id']}"],
+                "Url": [
+                    f"{settings.public_url}/twiml?session_id={session['id']}&webhook_token={session['stream_token']}"
+                ],
             }
         ]
-        assert "trial rules block Media Streams" in caplog.text
         version = session["version"]
         await runtime.refresh_call()
         assert runtime.store.get(session["id"])["version"] == version
@@ -200,6 +204,7 @@ async def test_call_creation_does_not_retry_on_lost_response(settings):
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         client = TwilioClient(settings, http)
         client.account_type = "Trial"
+        settings.call_mode = "gather"
         with pytest.raises(IntegrationError, match="Check the call status"):
             await client.call_owner("checkin-1")
     assert len(requests) == 1
