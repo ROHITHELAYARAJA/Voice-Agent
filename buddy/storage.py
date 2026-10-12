@@ -44,6 +44,12 @@ class Store:
                     id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
                     role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS phone_turns (
+                    call_sid TEXT NOT NULL, turn INTEGER NOT NULL, session_id TEXT NOT NULL,
+                    section TEXT NOT NULL, question TEXT NOT NULL, xml TEXT NOT NULL,
+                    speech TEXT, interpretation TEXT, response TEXT,
+                    PRIMARY KEY(call_sid, turn)
+                );
             """)
 
     @contextmanager
