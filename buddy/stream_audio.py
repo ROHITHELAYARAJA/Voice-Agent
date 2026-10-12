@@ -52,3 +52,49 @@ def telephone_audio(wav_bytes):
             raise ValueError("Jessica audio must be mono 24 kHz PCM16")
         samples = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2").astype(np.float32)
     return encode_mulaw(resample_poly(samples, 1, 3).clip(-32768, 32767).astype(np.int16))
+
+
+class SpeechGate:
+    def __init__(self, detector=None):
+        if detector is None:
+            import webrtcvad
+
+            detector = webrtcvad.Vad(2)
+        self.detector = detector
+        self.pending = bytearray()
+        self.preroll = deque(maxlen=10)
+        self.audio = bytearray()
+        self.voiced = self.quiet = self.total_voiced = 0
+        self.active = False
+
+    def feed(self, pcm):
+        self.pending.extend(pcm)
+        events = []
+        while len(self.pending) >= 640:
+            frame = bytes(self.pending[:640])
+            del self.pending[:640]
+            rms = np.sqrt(np.mean(np.frombuffer(frame, dtype="<i2").astype(np.float32) ** 2))
+            speech = rms >= 130 and self.detector.is_speech(frame, 16000)
+            if not self.active:
+                self.preroll.append(frame)
+                self.voiced = self.voiced + 1 if speech else 0
+                if self.voiced >= 3:
+                    self.active = True
+                    self.audio.extend(b"".join(self.preroll))
+                    self.total_voiced = 3
+                    self.quiet = 0
+                    events.append(("start", None))
+            else:
+                self.audio.extend(frame)
+                self.total_voiced += bool(speech)
+                self.quiet = 0 if speech else self.quiet + 1
+                if self.quiet >= 35 or len(self.audio) >= 640000:
+                    if self.total_voiced >= 8:
+                        events.append(("utterance", bytes(self.audio)))
+                    else:
+                        events.append(("silence", None))
+                    self.active = False
+                    self.audio.clear()
+                    self.preroll.clear()
+                    self.voiced = self.quiet = self.total_voiced = 0
+        return events
