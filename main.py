@@ -10,6 +10,7 @@ from twilio.twiml.voice_response import VoiceResponse
 
 from buddy.logging import configure_logging
 from buddy.runtime import BuddyRuntime
+from buddy.sheets import IntegrationError
 from config import Settings
 
 
@@ -182,13 +183,28 @@ def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = 
             raise HTTPException(403, str(exc)) from None
         return Response(status_code=204)
 
+    @application.get("/audio/{token}.wav")
+    async def audio(token: str):
+        if settings.call_mode != "gather" or settings.phone_voice_provider != "eleven_labs":
+            raise HTTPException(404, "Audio not found.")
+        try:
+            content = await runtime.phone.voice.fetch(token)
+        except KeyError:
+            raise HTTPException(404, "Audio not found.") from None
+        except IntegrationError:
+            raise HTTPException(503, "Voice audio is unavailable.") from None
+        return Response(
+            content, media_type="audio/wav", headers={"Cache-Control": "private, no-store"}
+        )
+
     @application.websocket("/media")
     async def media(websocket: WebSocket):
         signature = websocket.headers.get("x-twilio-signature", "")
         validator = RequestValidator(settings.twilio_auth_token)
         url = settings.public_url + "/media"
         valid = bool(
-            settings.twilio_auth_token
+            settings.call_mode == "stream"
+            and settings.twilio_auth_token
             and settings.deepgram_api_key
             and settings.public_url
             and not websocket.url.query
