@@ -8,6 +8,7 @@ from typing import Literal
 import httpx
 from pydantic import Field
 
+from buddy.language import LANGUAGE_RULES
 from buddy.local_server import ensure_local_server
 from buddy.models import MoneyEntry, Section, StrictModel
 from buddy.safety import money_evidence, requests_stop, uncertain_money
@@ -182,7 +183,10 @@ class LocalAI:
                 if (
                     not result.entries
                     and not result.skipped
-                    and not re.search(r"\b(no|none|nothing|zero|not|didn.t)\b", speech.lower())
+                    and not re.search(
+                        r"\b(no|none|nothing|zero|not|didn.t)\b|இல்லை|இல்ல|செலவில்லை|வரவில்லை",
+                        speech.lower(),
+                    )
                 ):
                     return Interpretation(
                         action="clarify",
@@ -208,6 +212,10 @@ class LocalAI:
                     {
                         "role": "user",
                         "content": PROMPT
+                        + "\n"
+                        + LANGUAGE_RULES
+                        + "\nConfigured response language: "
+                        + self.settings.conversation_language
                         + "\nInput data:\n"
                         + json.dumps(
                             {
