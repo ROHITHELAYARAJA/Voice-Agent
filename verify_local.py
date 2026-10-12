@@ -17,12 +17,25 @@ from config import ROOT, Settings
 from main import create_app
 
 
-async def verify(cloud: bool = False) -> None:
-    output = ROOT / "outputs" / ("deepgram-verification" if cloud else "local-verification")
+async def verify(cloud: bool = False, language: str = "en") -> None:
+    output = (
+        ROOT
+        / "outputs"
+        / (
+            "tamil-verification"
+            if language == "ta"
+            else "deepgram-verification"
+            if cloud
+            else "local-verification"
+        )
+    )
     output.mkdir(parents=True, exist_ok=True)
     settings = replace(
         Settings.from_env(),
         call_mode="gather",
+        conversation_language=language,
+        phone_language="ta-IN" if language == "ta" else "en-IN",
+        phone_speech_model="googlev2_chirp_3" if language == "ta" else "default",
         gather_ai_provider="deepgram" if cloud else "local",
         phone_voice_provider="eleven_labs" if cloud else "twilio",
         data_dir=output,
@@ -86,6 +99,18 @@ async def verify(cloud: bool = False) -> None:
                 "Nothing else",
                 "Yes, that's correct",
             ]
+            if language == "ta":
+                answers = [
+                    "ஆமாம்",
+                    "இன்று Python project-இல் வேலை செய்தேன்",
+                    "Python கற்றுக்கொண்டேன்",
+                    "மதிய உணவிற்கு 120 ரூபாய், பேருந்திற்கு 80 ரூபாய் செலவு செய்தேன்",
+                    "வருமானம் இல்லை",
+                    "நலமாக இருக்கிறேன்",
+                    "நாளை project முடிக்க நினைக்கிறேன்",
+                    "வேறு ஒன்றும் இல்லை",
+                    "ஆம் சுருக்கம் சரி",
+                ]
             for speech in answers:
                 gather = ET.fromstring(xml).find("Gather")
                 if gather is None:
@@ -122,6 +147,7 @@ async def verify(cloud: bool = False) -> None:
             "verified": True,
             "model": settings.llm_model if cloud else settings.local_model,
             "voice": settings.tts_voice if cloud else settings.phone_voice,
+            "language": language,
             "voice_model": settings.tts_model if cloud else None,
             "checkin_id": session["id"],
             "spending_totals": state["spending_totals"],

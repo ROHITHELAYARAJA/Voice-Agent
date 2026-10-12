@@ -1,0 +1,45 @@
+{
+  "name": "nila",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/call-worker",
+    "services/journal-processor"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @nila/web",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck -w @nila/web",
+    "test": "vitest run",
+    "test:browser": "playwright test",
+    "start:api": "tsx --env-file-if-exists=.env.calmloop apps/api/src/server.ts",
+    "start:worker": "tsx --env-file-if-exists=.env.calmloop services/call-worker/src/index.ts",
+    "import:legacy": "tsx scripts/import-legacy-providers.ts",
+    "preflight": "node scripts/deployment-preflight.mjs",
+    "format": "prettier --check apps packages services/call-worker services/journal-processor tests/calmloop tests/browser supabase/tests"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "@js-temporal/polyfill": "^0.5.1",
+    "@supabase/supabase-js": "^2.117.3",
+    "fastify": "^5.6.2",
+    "pg": "^8.16.3",
+    "tsx": "^4.20.6",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@electric-sql/pglite": "^0.3.14",
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^24.10.0",
+    "@types/pg": "^8.15.6",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.4"
+  },
+  "type": "module"
+}
