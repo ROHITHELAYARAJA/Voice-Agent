@@ -1,8 +1,8 @@
 import json
 
+from buddy.language import LANGUAGE_RULES, TAMIL_MESSAGES
 from buddy.models import AnswerInput, CompleteInput, EndInput
 from buddy.provider_schema import tool_schema
-from buddy.language import LANGUAGE_RULES
 from config import Settings
 
 PROMPT = """You are Buddy, {owner_name}'s friendly, calm AI companion for a daily phone check-in.
@@ -90,7 +90,9 @@ def build_agent_settings(settings: Settings, state: dict, transport: str = "twil
         currency=settings.currency,
         state=json.dumps(state, ensure_ascii=False),
     )
-    prompt += "\n" + LANGUAGE_RULES + "\nConfigured response language: " + settings.conversation_language
+    prompt += (
+        "\n" + LANGUAGE_RULES + "\nConfigured response language: " + settings.conversation_language
+    )
     if state["next_section"] == "consent":
         greeting = (
             f"Hi {settings.owner_name}, it's Buddy, your AI companion. Ready for a quick check-in?"
@@ -99,12 +101,16 @@ def build_agent_settings(settings: Settings, state: dict, transport: str = "twil
         greeting = f"Hi {settings.owner_name}, it's Buddy, your AI check-in companion. Is now a good time to continue your check-in?"
         prompt += "\nThis is a resumed call. Ask fresh permission before continuing. If yes, use get_checkin_state and resume the next question without overwriting existing consent."
     speak = {"type": settings.tts_provider}
+    if settings.conversation_language == "ta":
+        greeting = TAMIL_MESSAGES["CONSENT" if state["next_section"] == "consent" else "RESUME"]
     if settings.tts_provider == "eleven_labs":
         speak.update(model_id=settings.tts_model)
         if settings.tts_connection == "managed":
             speak["voice_id"] = settings.tts_voice
+            if settings.conversation_language == "ta":
+                speak["language_code"] = "ta"
         else:
-            speak["language_code"] = "en-US"
+            speak["language_code"] = "ta" if settings.conversation_language == "ta" else "en-US"
     else:
         speak["model"] = settings.tts_model
     return {
