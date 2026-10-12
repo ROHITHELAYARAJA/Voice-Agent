@@ -1,3 +1,5 @@
+import logging
+import time
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -31,6 +33,21 @@ def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = 
         openapi_url=None,
     )
     application.state.runtime = runtime
+
+    @application.middleware("http")
+    async def phone_request_log(request: Request, call_next):
+        started = time.monotonic()
+        response = await call_next(request)
+        if request.url.path in {"/twiml", "/answer", "/call-status"}:
+            logging.getLogger("WEBHOOK").info(
+                "%s %s | HTTP %s | signature %s | %.2fs",
+                request.method,
+                request.url.path,
+                response.status_code,
+                "present" if request.headers.get("x-twilio-signature") else "missing",
+                time.monotonic() - started,
+            )
+        return response
 
     async def verified_form(request: Request):
         if not settings.twilio_auth_token or not settings.public_url:
