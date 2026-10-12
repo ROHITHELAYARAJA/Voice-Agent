@@ -22,6 +22,11 @@ class Settings:
     owner_phone_number: str = ""
     owner_name: str = "Rohith"
     call_mode: str = "gather"
+    stream_stt_provider: str = "deepgram"
+    conversation_language: str = "en"
+    phone_speech_model: str = "default"
+    whisper_model: str = "small"
+    whisper_device: str = "auto"
     gather_ai_provider: str = "local"
     phone_voice_provider: str = "twilio"
     local_model: str = "qwen3:1.7b"
@@ -61,6 +66,11 @@ class Settings:
             "owner_phone_number": "OWNER_PHONE_NUMBER",
             "owner_name": "OWNER_NAME",
             "call_mode": "CALL_MODE",
+            "stream_stt_provider": "STREAM_STT_PROVIDER",
+            "conversation_language": "CONVERSATION_LANGUAGE",
+            "phone_speech_model": "PHONE_SPEECH_MODEL",
+            "whisper_model": "WHISPER_MODEL",
+            "whisper_device": "WHISPER_DEVICE",
             "gather_ai_provider": "GATHER_AI_PROVIDER",
             "phone_voice_provider": "PHONE_VOICE_PROVIDER",
             "local_model": "LOCAL_MODEL",
