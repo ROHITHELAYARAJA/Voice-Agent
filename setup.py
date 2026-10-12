@@ -6,13 +6,12 @@ from dotenv import dotenv_values, set_key
 from config import ROOT
 
 FIELDS = [
-    ("DEEPGRAM_API_KEY", "Deepgram API key", True),
     ("NGROK_AUTHTOKEN", "ngrok auth token", True),
     ("TWILIO_ACCOUNT_SID", "Twilio account SID", False),
     ("TWILIO_AUTH_TOKEN", "Twilio auth token", True),
     ("TWILIO_PHONE_NUMBER", "Your Twilio calling number in +countrycode format", False),
     ("OWNER_PHONE_NUMBER", "Your own phone number in +countrycode format", False),
-    ("ELEVENLABS_API_KEY", "ElevenLabs API key with access to Jessica", True),
+    ("DEEPGRAM_API_KEY", "Deepgram Voice Agent API key", True),
     ("EXCEL_FILE", "Optional Excel file path (Enter uses data/Buddy Daily Check-ins.xlsx)", False),
     ("OWNER_NAME", "Your preferred name", False),
 ]
@@ -31,9 +30,18 @@ def main() -> None:
         if value:
             set_key(path, key, value)
     for key, default in {
+        "CALL_MODE": "gather",
+        "GATHER_AI_PROVIDER": "deepgram",
+        "PHONE_VOICE_PROVIDER": "eleven_labs",
+        "TTS_CONNECTION": "managed",
+        "LOCAL_MODEL": "qwen3:1.7b",
+        "LOCAL_AI_URL": "http://127.0.0.1:11434",
+        "PHONE_VOICE": "Polly.Aditi",
+        "PHONE_LANGUAGE": "en-IN",
+        "PHONE_SPEECH_TIMEOUT": "1",
         "SHEET_BACKEND": "excel",
-        "LLM_PROVIDER": "google",
-        "LLM_MODEL": "gemini-3.8-flash",
+        "LLM_PROVIDER": "open_ai",
+        "LLM_MODEL": "gpt-4.1-mini",
         "TTS_PROVIDER": "eleven_labs",
         "TTS_MODEL": "eleven_turbo_v2_5",
         "TTS_VOICE_ID": "cgSgspJ2msm6clMCkdW9",
@@ -45,6 +53,7 @@ def main() -> None:
         if not dotenv_values(path).get(key):
             set_key(path, key, default)
     print("Settings saved locally. Run: uv run python run.py --doctor --live-check")
+    print("Deepgram provides GPT-4.1 Mini and Jessica using your project credits.")
     print("Start and call yourself: uv run python run.py --call")
 
 
