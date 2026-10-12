@@ -7,6 +7,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 
 from buddy.agent import build_agent_settings
 from buddy.bridge import DEEPGRAM_URL
+from buddy.language import LANGUAGE_RULES
 from buddy.local_ai import PROMPT, Interpretation, LocalAI
 from buddy.provider_schema import tool_schema
 from buddy.sheets import IntegrationError
@@ -32,6 +33,12 @@ class DeepgramAI(LocalAI):
             "Use record for a new current_section answer. correct requires an explicit correction "
             "and a section that already exists in saved_answers. Supply every field, including empty fields. "
             "Do not speak or call another tool."
+        )
+        payload["agent"]["think"]["prompt"] += (
+            "\n"
+            + LANGUAGE_RULES
+            + "\nConfigured response language: "
+            + self.settings.conversation_language
         )
         payload["agent"]["think"]["functions"] = [
             {
