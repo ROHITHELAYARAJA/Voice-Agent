@@ -168,11 +168,21 @@ class Settings:
 
     def missing_call_settings(self) -> list[str]:
         missing = []
-        for name in ("deepgram_api_key", "twilio_account_sid", "twilio_auth_token"):
+        for name in ("twilio_account_sid", "twilio_auth_token"):
             if not getattr(self, name):
                 missing.append(name.upper())
-        if self.tts_provider == "eleven_labs" and not self.elevenlabs_api_key:
-            missing.append("ELEVENLABS_API_KEY")
+        if (
+            self.call_mode == "stream"
+            or self.gather_ai_provider == "deepgram"
+            or self.phone_voice_provider == "eleven_labs"
+        ):
+            if not self.deepgram_api_key:
+                missing.append("DEEPGRAM_API_KEY")
+        if (
+            self.call_mode == "stream" and self.tts_provider == "eleven_labs"
+        ) or self.phone_voice_provider == "eleven_labs":
+            if self.tts_connection == "byo" and not self.elevenlabs_api_key:
+                missing.append("ELEVENLABS_API_KEY")
         for name in ("twilio_phone_number", "owner_phone_number"):
             if not re.fullmatch(r"\+[1-9]\d{7,14}", getattr(self, name)):
                 missing.append(name.upper())
