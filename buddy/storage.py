@@ -300,3 +300,24 @@ class Store:
                     (utc_now(), row["session_id"]),
                 )
         return self.phone_turn(call_sid, turn)
+
+    def save_phone_result(
+        self,
+        call_sid: str,
+        turn: int,
+        *,
+        interpretation: str | None = None,
+        response: str | None = None,
+    ) -> None:
+        if interpretation is None and response is None:
+            raise ValueError("No phone result provided")
+        column, value = (
+            ("interpretation", interpretation)
+            if interpretation is not None
+            else ("response", response)
+        )
+        with self.connection() as db:
+            db.execute(
+                f"UPDATE phone_turns SET {column} = ? WHERE call_sid = ? AND turn = ?",
+                (value, call_sid, turn),
+            )
