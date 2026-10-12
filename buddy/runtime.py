@@ -9,6 +9,7 @@ import httpx
 from buddy.bridge import VoiceBridge
 from buddy.checkin import CheckinService
 from buddy.excel import ExcelClient
+from buddy.phone import PhoneConversation
 from buddy.sheets import IntegrationError, SheetsClient, SheetsSync
 from buddy.storage import Store
 from buddy.telephony import TwilioClient
@@ -31,9 +32,11 @@ class BuddyRuntime:
         self.sheets = SheetsSync(self.store, client)
         self.telephony = TwilioClient(settings, self.http)
         self.bridge = VoiceBridge(settings, self.store, self.checkin, self.sheets)
+        self.phone = PhoneConversation(self)
         self.call_lock = asyncio.Lock()
         self.worker = None
         self.call_worker = None
+        self.ai_cleanup = None
 
     async def start(self) -> None:
         self.store.recover_calls()
@@ -61,6 +64,9 @@ class BuddyRuntime:
         if self.worker:
             self.worker.cancel()
             await asyncio.gather(self.worker, return_exceptions=True)
+        if self.ai_cleanup:
+            await asyncio.gather(self.ai_cleanup, return_exceptions=True)
+        await self.phone.close()
         await self.sheets.flush()
         await self.http.aclose()
 
@@ -106,6 +112,17 @@ class BuddyRuntime:
                 raise IntegrationError(
                     "A call is already active. Use hangup before starting another."
                 )
+            if self.ai_cleanup:
+                await asyncio.gather(self.ai_cleanup, return_exceptions=True)
+                self.ai_cleanup = None
+            if self.settings.call_mode == "stream":
+                account_type = await self.telephony.check_account()
+                if account_type == "Trial":
+                    raise IntegrationError(
+                        "Twilio trial blocks Media Streams. Use CALL_MODE=gather with Deepgram and Jessica; no call was placed."
+                    )
+            if self.settings.call_mode == "gather":
+                await self.phone.check()
             session = self.store.get(session_id) if session_id else self.new_session()
             if session["status"] in {"completed", "declined"}:
                 raise IntegrationError("This check-in is closed. Use call to start a new check-in.")
@@ -117,13 +134,16 @@ class BuddyRuntime:
             )
             logger.info("Requesting a call to your configured number | check-in %s", session["id"])
             try:
-                result = await self.telephony.call_owner(session["id"])
+                result = await self.telephony.call_owner(
+                    session["id"], self.store.get(session["id"])["stream_token"]
+                )
                 current = self.store.get(session["id"])
                 changes = {"call_sid": result["sid"]}
                 if current["call_status"] == "starting":
                     changes["call_status"] = result.get("status", "queued")
                 self.store.update(session["id"], **changes)
             except IntegrationError as exc:
+                await self.phone.ai.close()
                 self.store.update(session["id"], call_status="failed", call_error=str(exc))
                 self.sheets.wake.set()
                 logger.error("%s", exc)
@@ -156,6 +176,7 @@ class BuddyRuntime:
         if session["status"] not in {"completed", "declined"}:
             changes["status"] = "interrupted"
         self.store.update(session["id"], **changes)
+        self.ai_cleanup = asyncio.create_task(self.phone.ai.close())
         self.sheets.wake.set()
         logger.info("Call ended. Every saved answer is retained.")
 
@@ -185,5 +206,7 @@ class BuddyRuntime:
         if value in terminal and session["status"] not in {"completed", "declined"}:
             changes["status"] = "interrupted"
         self.store.update(session_id, **changes)
+        if value in terminal:
+            self.ai_cleanup = asyncio.create_task(self.phone.ai.close())
         self.sheets.wake.set()
         logger.info("Call %s | %s", sid, value)
