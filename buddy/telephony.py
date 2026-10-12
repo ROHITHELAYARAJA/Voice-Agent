@@ -71,6 +71,8 @@ class TwilioClient:
     async def call_owner(self, session_id: str) -> dict:
         if self.account_type is None:
             await self.check_account()
+        if self.account_type == "Trial" and self.settings.call_mode == "stream":
+            raise IntegrationError("Twilio trial blocks Media Streams. Use CALL_MODE=gather with Deepgram and Jessica; no call was placed.")
         base = self.settings.public_url
         data = {
             "To": self.settings.owner_phone_number,
@@ -78,9 +80,11 @@ class TwilioClient:
             "Url": f"{base}/twiml?session_id={session_id}",
         }
         if self.account_type == "Trial":
-            logger.warning(
-                "Trial account: using the basic call request. Twilio's current trial rules block Media Streams; the phone may ring without connecting Buddy to Deepgram. See https://www.twilio.com/docs/usage/trials/try-out-voice#blocked-verbs"
-            )
+            if self.settings.call_mode == "gather":
+                logger.info(
+                    "Trial account | speech questions enabled | maximum %s answers per call",
+                    self.settings.gather_max_turns,
+                )
         else:
             data.update(
                 {
