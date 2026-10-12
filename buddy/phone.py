@@ -100,15 +100,19 @@ class PhoneConversation:
 
     def summary_parts(self, session_id: str) -> list[str]:
         state = self.checkin.state(session_id)
-        labels = {
-            "accomplishments": "Progress",
-            "learning": "Learning",
-            "spending": "Spending",
-            "income": "Income",
-            "wellbeing": "Feeling",
-            "tomorrow": "Tomorrow",
-            "notes": "Other notes",
-        }
+        labels = (
+            TAMIL_LABELS
+            if self.settings.conversation_language == "ta"
+            else {
+                "accomplishments": "Progress",
+                "learning": "Learning",
+                "spending": "Spending",
+                "income": "Income",
+                "wellbeing": "Feeling",
+                "tomorrow": "Tomorrow",
+                "notes": "Other notes",
+            }
+        )
         parts = [self.REVIEW_START]
         for section, label in labels.items():
             answer = state["answers"].get(section)
