@@ -110,6 +110,9 @@ class VoiceAudio:
             except OSError:
                 logger.warning("Static voice cache could not be saved; keeping audio in memory")
         self.cache[text] = result
+        self.cache.move_to_end(text)
+        while len(self.cache) > 32:
+            self.cache.popitem(last=False)
         logger.info("Audio ready | Jessica | %.2fs", time.monotonic() - started)
         return result
 
