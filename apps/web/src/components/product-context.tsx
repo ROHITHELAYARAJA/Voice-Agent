@@ -8,8 +8,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { weeklyRecap } from "../../../../packages/wellness/src/insights";
-import type { Dashboard } from "../../../../packages/shared-types/src/index";
+import { weeklyRecap } from "@nila/wellness";
+import type { Dashboard } from "@nila/shared-types";
 import { api, browserClient } from "@/lib/supabase";
 const previewData: Dashboard = {
   profile: {

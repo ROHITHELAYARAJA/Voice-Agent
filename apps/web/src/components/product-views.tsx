@@ -20,8 +20,8 @@ import { Empty, Field, Modal, Notice, Skeleton } from "./ui";
 import {
   activities,
   challengeActivity,
-} from "../../../../packages/validation/src/index";
-import type { Journal } from "../../../../packages/shared-types/src/index";
+} from "@nila/validation";
+import type { Journal } from "@nila/shared-types";
 function message(error: unknown) {
   return error instanceof Error ? error.message : "Please try again.";
 }

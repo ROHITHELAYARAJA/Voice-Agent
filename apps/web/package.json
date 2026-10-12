@@ -19,11 +19,15 @@
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "@nila/validation": "0.1.0",
+    "@nila/shared-types": "0.1.0",
+    "@nila/wellness": "0.1.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@types/node": "^24.10.0"
   }
 }

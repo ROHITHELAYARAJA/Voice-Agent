@@ -16,7 +16,7 @@ import { Empty, Notice, Skeleton, Field } from "./ui";
 import {
   activities,
   challengeActivity,
-} from "../../../../packages/validation/src/index";
+} from "@nila/validation";
 export function localDate(timezone = "Asia/Kolkata", date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
