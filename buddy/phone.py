@@ -92,3 +92,67 @@ class PhoneConversation:
 
     def summary(self, session_id: str) -> str:
         return " ".join(self.summary_parts(session_id))
+
+    def question(
+        self,
+        session_id: str,
+        call_sid: str,
+        turn: int,
+        section: str | None = None,
+        prompt: str | None = None,
+    ) -> str:
+        state = self.checkin.state(session_id)
+        section = section or state["next_section"]
+        if state["status"] in {"completed", "declined"}:
+            return self.finish(session_id, "Your check-in is closed. Goodbye.", interrupt=False)
+        if turn >= self.settings.gather_max_turns:
+            return self.finish(
+                session_id,
+                "We have reached this call's question limit. Everything captured is saved. Please resume this check-in from the terminal when you are ready. Goodbye.",
+            )
+        if prompt is None:
+            if section == "review":
+                prompt = self.summary(session_id)
+            elif section == "resume_consent":
+                prompt = self.RESUME
+            elif section == "consent":
+                prompt = self.CONSENT
+            else:
+                prompt = state["next_question"]
+        response = VoiceResponse()
+        action = f"{self.settings.public_url}/answer?session_id={session_id}&turn={turn}"
+        if self.runtime.telephony.account_type == "Trial":
+            action += "&webhook_token=" + self.store.get(session_id)["stream_token"]
+        gather = response.gather(
+            input="speech dtmf",
+            action=action,
+            method="POST",
+            language=self.settings.phone_language,
+            speech_timeout=self.settings.phone_speech_timeout,
+            timeout=8,
+            num_digits=1,
+            action_on_empty_result=True,
+        )
+        if (
+            section == "review"
+            and prompt == self.summary(session_id)
+            and self.settings.phone_voice_provider == "eleven_labs"
+        ):
+            for part in self.summary_parts(session_id):
+                self.say(gather, part, session_id)
+        else:
+            self.say(gather, prompt, session_id)
+        self.say(response, self.SILENCE, session_id)
+        response.hangup()
+        saved = self.store.open_phone_turn(
+            call_sid, turn, session_id, section, prompt, str(response)
+        )
+        self.runtime.sheets.wake.set()
+        logger.info("Buddy: %s", saved["question"])
+        return saved["xml"]
+
+    def begin(self, session_id: str, call_sid: str) -> str:
+        try:
+            return self.store.phone_turn(call_sid, 0)["xml"]
+        except KeyError:
+            return self.question(session_id, call_sid, 0)
