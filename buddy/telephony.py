@@ -68,7 +68,7 @@ class TwilioClient:
         self.account_type = account_type
         return account_type
 
-    async def call_owner(self, session_id: str) -> dict:
+    async def call_owner(self, session_id: str, webhook_token: str | None = None) -> dict:
         if self.account_type is None:
             await self.check_account()
         if self.account_type == "Trial" and self.settings.call_mode == "stream":
@@ -79,6 +79,8 @@ class TwilioClient:
             "From": self.settings.twilio_phone_number,
             "Url": f"{base}/twiml?session_id={session_id}",
         }
+        if webhook_token and self.account_type == "Trial" and self.settings.call_mode == "gather":
+            data["Url"] += f"&webhook_token={webhook_token}"
         if self.account_type == "Trial":
             if self.settings.call_mode == "gather":
                 logger.info(
