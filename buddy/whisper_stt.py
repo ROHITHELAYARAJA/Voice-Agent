@@ -53,3 +53,64 @@ class WhisperSTT:
                 self.settings.whisper_model,
                 self.device,
             )
+
+    def decode(self, pcm: bytes) -> str:
+        import numpy as np
+
+        if not self.model:
+            raise ValueError("Whisper has not been loaded")
+        if not 5120 <= len(pcm) <= 960000 or len(pcm) % 2:
+            return ""
+        samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768
+        if np.sqrt(np.mean(samples * samples)) < 0.004:
+            return ""
+        started = time.monotonic()
+        with self.lock:
+            result = self.model.transcribe(
+                samples,
+                language=self.settings.conversation_language,
+                task="transcribe",
+                fp16=self.device == "cuda",
+                temperature=0,
+                beam_size=1,
+                condition_on_previous_text=False,
+                initial_prompt="தமிழ் மற்றும் English கலந்த தினசரி உரையாடல். பணத் தொகைகள், வேலை, கற்றல்.",
+                no_speech_threshold=0.6,
+                logprob_threshold=-1.0,
+                compression_ratio_threshold=2.4,
+                verbose=None,
+            )
+        segments = result.get("segments", [])
+        trusted = [
+            segment
+            for segment in segments
+            if segment.get("no_speech_prob", 0) < 0.6
+            and segment.get("avg_logprob", -10) >= -1.0
+            and segment.get("compression_ratio", 0) <= 2.4
+        ]
+        text = " ".join(segment.get("text", "").strip() for segment in trusted).strip()
+        logger.info("Transcription ready | %.2fs | %s", time.monotonic() - started, self.device)
+        return text[:4000]
+
+    async def transcribe(self, pcm):
+        return await asyncio.to_thread(self.decode, pcm)
+
+    async def transcribe_file(self, path: Path):
+        from math import gcd
+
+        import numpy as np
+        from scipy.signal import resample_poly
+
+        with wave.open(str(path), "rb") as wav:
+            if (
+                wav.getsampwidth() != 2
+                or wav.getnchannels() != 1
+                or wav.getnframes() > wav.getframerate() * 30
+            ):
+                raise ValueError("Use a mono 16-bit PCM WAV of at most 30 seconds")
+            rate = wav.getframerate()
+            pcm = wav.readframes(wav.getnframes())
+        samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32)
+        factor = gcd(rate, 16000)
+        converted = resample_poly(samples, 16000 // factor, rate // factor)
+        return await self.transcribe(np.clip(converted, -32768, 32767).astype("<i2").tobytes())
