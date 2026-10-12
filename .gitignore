@@ -11,3 +11,5 @@ credentials/
 outputs/
 outputs/
 .archify/
+.local/
+.pytest_tmp/
