@@ -83,6 +83,42 @@ async function fixture({
   return { app, writes, db };
 }
 describe("API authentication and ownership", () => {
+  it("requires the internal secret before scheduler access and supports non-dialing verification", async () => {
+    const { app, db } = await fixture();
+    const request = {
+      method: "POST" as const,
+      url: "/internal/scheduler/calls",
+      payload: { dry_run: true },
+    };
+    expect((await app.inject(request)).statusCode).toBe(403);
+    expect(
+      (
+        await app.inject({
+          ...request,
+          headers: { authorization: `Bearer ${token()}` },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const verified = await app.inject({
+      ...request,
+      headers: { authorization: `Bearer ${env.INTERNAL_SERVICE_SECRET}` },
+    });
+    expect(verified.statusCode).toBe(200);
+    expect(verified.json()).toMatchObject({
+      status: "configured",
+      scheduler: "supabase-cron-v1",
+    });
+    expect(db.pool.query).not.toHaveBeenCalled();
+    expect(
+      (
+        await app.inject({
+          ...request,
+          url: "/internal/scheduler/delete",
+          headers: { authorization: `Bearer ${env.INTERNAL_SERVICE_SECRET}` },
+        })
+      ).statusCode,
+    ).toBe(400);
+  });
   it("rejects missing and invalid identities before accessing data", async () => {
     const { app, db } = await fixture({ invalid: true });
     expect((await app.inject({ url: "/v1/dashboard" })).statusCode).toBe(401);

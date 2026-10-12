@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { Pool } from "pg";
+import { readFileSync } from "node:fs";
 import type { Environment } from "./config.ts";
 export function database(env: Environment) {
   const connection = new URL(env.DATABASE_URL);
@@ -12,8 +13,21 @@ export function database(env: Environment) {
   const pool = new Pool({
     connectionString: connection.toString(),
     max: 8,
+    connectionTimeoutMillis: 10000,
+    statement_timeout: 10000,
     ssl:
-      env.NODE_ENV === "production" ? { rejectUnauthorized: true } : undefined,
+      env.NODE_ENV === "production"
+        ? {
+            rejectUnauthorized: true,
+            ca: readFileSync(
+              new URL(
+                "../../../certs/supabase-prod-ca-2021.crt",
+                import.meta.url,
+              ),
+              "utf8",
+            ),
+          }
+        : undefined,
   });
   const scoped = (token: string) =>
     createClient(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY, {

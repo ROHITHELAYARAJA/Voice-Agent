@@ -44,3 +44,13 @@ Local Lighthouse reports and screenshots are stored in the Voice-Agent checkout'
 | Simulated mobile        | 78          | 100           | 100            | 100 | 3.3 s | 550 ms              | 0            |
 
 The final reports are `lighthouse-nila-desktop-final.json` and `lighthouse-nila-mobile-idle.json`. Mobile performance remains a release gate: reduce initial JavaScript execution and verify the deployed page on representative devices before public launch. Earlier measurements varied under concurrent local workloads; the mobile result above was collected after stopping the development server.
+
+## Supabase Cron migration, 12 October 2026
+
+The paid Render worker was removed from render.yaml. Four Cron jobs were installed in the selected Supabase project: due calls every minute, reconciliation every five minutes, recaps hourly, and retention hourly. The jobs are initially paused until authenticated non-dialing verification succeeds against the redeployed API. Vault contains the API origin and existing internal service secret; values were never printed or committed.
+
+All 40 automated tests and strict TypeScript checks pass. New tests cover unauthorized scheduler requests, non-dialing verification, overlapping ticks, bounded claims, paused calling, and recovery after failures. Live certificate-verified PostgreSQL checks returned calls=paused, reconcile=completed, recaps=completed. The database contains no enabled schedules or queued calls. No real call was placed. Public and authenticated roles cannot execute the private dispatch function. The Supabase advisor's private-table informational findings remain expected; it also reports leaked-password protection disabled, which is a separate Auth launch gate.
+
+The production Supabase CA was downloaded from the official certificate endpoint referenced by Supabase Studio and bundled as a public trust anchor. Certificate validation remains enabled. Its addition fixed the observed self-signed certificate chain error during secure PostgreSQL connection verification.
+
+The current deployed API does not yet expose the new scheduler route. Its redeployment and subsequent Cron activation remain outstanding. Existing Render services were not deleted through the provider dashboard; an uncreated worker can be cancelled, and any already-created worker must be suspended or explicitly deleted by the owner.

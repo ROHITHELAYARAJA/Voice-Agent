@@ -19,7 +19,8 @@
     "services/journal-processor/**/*.ts",
     "tests/calmloop/**/*.ts",
     "supabase/tests/**/*.ts",
-    "scripts/import-legacy-providers.ts"
+    "scripts/import-legacy-providers.ts",
+    "scripts/configure-supabase-scheduler.ts"
   ],
   "exclude": ["node_modules", "apps/web"]
 }

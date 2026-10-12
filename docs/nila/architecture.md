@@ -37,9 +37,9 @@ flowchart TD
   DB --> RT[Private tenant Realtime]
   RT --> Browser
   API --> Vault[Encrypted credential records]
-  Worker[Shared Render worker] --> DB
-  Worker --> Vault
-  Worker --> Twilio[Customer Twilio account]
+  Cron[Supabase Cron and pg_net] --> API
+  Cron --> DB
+  API --> Twilio[Customer Twilio account]
   Twilio --> Phone[Verified customer telephone]
   Twilio <--> Voice[Python voice service on Render]
   Voice --> Vault
@@ -49,7 +49,6 @@ flowchart TD
   Processor --> DB
   GitHub[GitHub CI] -. approved deployment .-> Web
   GitHub -. approved deployment .-> API
-  GitHub -. approved deployment .-> Worker
   GitHub -. approved deployment .-> Voice
 ```
 
@@ -80,7 +79,7 @@ erDiagram
 
 JWT verification establishes the owner; request bodies never select a user. RLS guards customer reads and permitted edits. Credentials are AES-256-GCM encrypted with owner/provider/reference as associated data and a versioned backend-only key. Customers only receive masked status. Service credentials never reach Next.js public variables. Administrative access requires a database role and aal2, and excludes private journal reads.
 
-The queue atomically claims due occurrences using SKIP LOCKED, unique schedule/occurrence constraints and leases. Immediately before dialing, the worker rechecks account status, verified phone, provider state and consent. A crash after call creation moves to reconciliation, not blind redial. The Twilio Call SID binds to the owner's session. Voice endpoints verify the customer's Twilio signature and short-lived session capability. A confirmed Trial account cannot enter the Media Streams path.
+Supabase Cron invokes bounded authenticated API tasks. The queue atomically claims due occurrences using SKIP LOCKED, unique schedule/occurrence constraints and leases. Immediately before dialing, the scheduling code rechecks account status, verified phone, provider state and consent. A crash after call creation moves to reconciliation, not blind redial. The Twilio Call SID binds to the owner's session. Voice endpoints verify the customer's Twilio signature and short-lived session capability. A confirmed Trial account cannot enter the Media Streams path. The paid Render worker is no longer required; the local worker remains a development option.
 
 Only server-created private Realtime broadcasts are emitted. Payloads carry a resource name and event, not journal text, credentials or transcripts. Topic authorization is the current user's UUID. Raw recording is off; the initial service rejects recording requests until its separate consent and retention pipeline is verified.
 

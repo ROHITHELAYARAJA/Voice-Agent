@@ -25,6 +25,7 @@ import {
   voiceCapabilities,
 } from "../../../packages/validation/src/index.ts";
 import { nextOccurrence } from "../../../services/call-worker/src/scheduling.ts";
+import { runScheduledTask } from "../../../services/call-worker/src/tasks.ts";
 import { weeklyRecap } from "../../../services/journal-processor/src/insights.ts";
 import type {
   Journal,
@@ -254,10 +255,25 @@ export async function buildApi(env: Environment, db = database(env)) {
   app.get("/health", async () => ({
     status: "ready",
     service: "calmloop-api",
+    scheduler: "supabase-cron-v1",
   }));
   app.addHook("preHandler", async (request) => {
     if (request.url.startsWith("/v1/")) await authenticate(request);
     if (request.url.startsWith("/internal/")) internal(request);
+  });
+  app.post("/internal/scheduler/:task", async (request) => {
+    const { task } = z
+      .object({ task: z.enum(["calls", "reconcile", "recaps"]) })
+      .parse(request.params);
+    const body = z
+      .object({ dry_run: z.boolean().default(false) })
+      .strict()
+      .parse(request.body ?? {});
+    if (body.dry_run)
+      return { task, status: "configured", scheduler: "supabase-cron-v1" };
+    const result = await runScheduledTask(db.pool, env, task);
+    app.log.info(result, "Supabase scheduled task finished");
+    return result;
   });
   app.get("/v1/mfa-status", async (request) => ({
     aal: identity(request).aal,

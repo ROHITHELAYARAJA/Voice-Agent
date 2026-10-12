@@ -4,11 +4,17 @@ import type {
   Journal,
 } from "../../../packages/shared-types/src/index.ts";
 import { weeklyRecap } from "./insights.ts";
-export async function generateWeeklyInsights(pool: Pool) {
+export async function generateWeeklyInsights(
+  pool: Pool,
+  options = { limit: 100, budgetMs: 30000 },
+) {
+  const deadline = Date.now() + options.budgetMs;
   const owners = await pool.query<{ user_id: string; timezone: string }>(
-    "select p.user_id,p.timezone from public.profiles p where not p.suspended and p.onboarding_complete and not exists(select 1 from public.weekly_insights w where w.user_id=p.user_id and w.created_at>now()-interval '24 hours') limit 100",
+    "select p.user_id,p.timezone from public.profiles p where not p.suspended and p.onboarding_complete and not exists(select 1 from public.weekly_insights w where w.user_id=p.user_id and w.created_at>now()-interval '24 hours') order by (select max(w.created_at) from public.weekly_insights w where w.user_id=p.user_id) nulls first limit $1",
+    [options.limit],
   );
   for (const owner of owners.rows) {
+    if (Date.now() >= deadline) break;
     const end = new Intl.DateTimeFormat("en-CA", {
       timeZone: owner.timezone,
       year: "numeric",
@@ -47,7 +53,7 @@ export async function generateWeeklyInsights(pool: Pool) {
       period: { start: since, end },
     };
     await pool.query(
-      "insert into public.weekly_insights(user_id,week_start,report) values($1,$2,$3) on conflict(user_id,week_start) do update set report=excluded.report,created_at=now() where public.weekly_insights.report is distinct from excluded.report",
+      "insert into public.weekly_insights(user_id,week_start,report) values($1,$2,$3) on conflict(user_id,week_start) do update set report=excluded.report,created_at=now()",
       [owner.user_id, since, report],
     );
   }

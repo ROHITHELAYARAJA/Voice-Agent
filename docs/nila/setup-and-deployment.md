@@ -26,7 +26,7 @@ Copy `.env.calmloop.example` to `.env.calmloop`. Keep it separate from the worki
 
 ## Render and Vercel
 
-`render.yaml` proposes three **staging** services with automatic deployment disabled: one API, one voice service, one shared worker. It references environment groups `nila-staging` and `nila-staging-voice`; create them after the workspace is selected. The voice group needs only `API_INTERNAL_URL`, `VOICE_PUBLIC_URL`, `INTERNAL_SERVICE_SECRET`, and `VOICE_SESSION_SECRET`, not the database encryption or Supabase service key. Internal API traffic must use HTTPS with a verified certificate. Database connection TLS must verify its certificate; install the project CA if needed, never disable verification.
+`render.yaml` now defines two **staging** services with automatic deployment disabled: the API and voice service. Supabase Cron replaces the paid shared Render worker. Follow [Supabase scheduling](supabase-scheduling.md) to configure Vault, verify the new API endpoint, and activate calls, reconciliation, recaps, and retention maintenance. It references environment groups `nila-staging` and `nila-staging-voice`; create them if using the Blueprint. The voice group needs only `API_INTERNAL_URL`, `VOICE_PUBLIC_URL`, `INTERNAL_SERVICE_SECRET`, and `VOICE_SESSION_SECRET`, not the database encryption or Supabase service key. Internal API traffic must use HTTPS with a verified certificate. The bundled public Supabase CA certificate allows production PostgreSQL certificate verification.
 
 Select `apps/web` as the Vercel root, enable access to files outside that directory, and use the root npm lockfile/workspaces. Set frontend public variables independently for staging and production. `apps/web/vercel.json` disables automatic Git deployments until approval. CI builds and tests but does not deploy or migrate a database. Once staging passes and deployment is explicitly approved, configure protected production environments and approval-gated releases. Never copy staging credentials into production.
 
@@ -51,7 +51,7 @@ Calling remains disabled in `platform_settings` until the authorized administrat
 
 ## Costs and privacy gates
 
-An always-running Render background worker and production phone service need a supported paid plan. Deepgram credits apply only to eligible Deepgram usage; Twilio and ElevenLabs have their own charges and entitlements. This architecture cannot promise fully free, reliable cloud telephone operation. Confirm the hosting budget and provider limits before creating resources.
+There is no separate Render worker fee in the Supabase Cron configuration. Supabase and Render free-plan limits still apply, and free Render Web Services can sleep. Deepgram credits apply only to eligible Deepgram usage; Twilio and ElevenLabs have their own charges and entitlements. This architecture cannot promise fully free, reliable cloud telephone operation.
 
 Audio recording is deliberately unavailable in this release. A future recording feature needs a separate consent flow, provider retention and deletion implementation, and regional review. Transcript retention is optional and off by default; temporary in-memory turns are cleared when the call ends. Retained transcripts expire through the worker, can be exported and can be deleted independently. Journals remain until the user deletes them or the account. Audit records expire after 90 days and contain no conversation text or raw keys.
 

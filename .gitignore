@@ -12,6 +12,7 @@ outputs/
 outputs/
 .archify/
 .local/
+supabase/.temp/
 .pytest_tmp/
 node_modules
 .env*

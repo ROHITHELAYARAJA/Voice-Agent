@@ -184,15 +184,24 @@ export async function processJob(
     client.release();
   }
 }
-export async function reconcile(pool: Pool, env: Environment) {
+export async function reconcile(
+  pool: Pool,
+  env: Environment,
+  options = { limit: 50, retention: true },
+) {
   await pool.query(
     "update public.call_sessions s set status='uncertain' from public.call_jobs j where s.job_id=j.id and j.status='uncertain' and s.status='sending'",
   );
   const rows = await pool.query(
-    "select s.id,s.user_id,s.call_sid,s.job_id from public.call_sessions s where s.status in ('uncertain','initiated','ringing','in-progress') and s.created_at<now()-interval '2 minutes' limit 50",
+    "select s.id,s.user_id,s.call_sid,s.job_id from public.call_sessions s where s.status in ('uncertain','initiated','ringing','in-progress') and s.call_sid is not null and s.created_at<now()-interval '2 minutes' order by coalesce(s.last_reconciled_at,s.created_at) limit $1",
+    [options.limit],
   );
   for (const row of rows.rows) {
     if (!row.call_sid) continue;
+    await pool.query(
+      "update public.call_sessions set last_reconciled_at=now() where id=$1",
+      [row.id],
+    );
     try {
       const credentials = await loadCredentials(
         pool,
@@ -235,10 +244,12 @@ export async function reconcile(pool: Pool, env: Environment) {
       continue;
     }
   }
-  await pool.query(
-    "delete from private.call_transcripts where expires_at<now()",
-  );
-  await pool.query(
-    "delete from public.audit_logs where created_at<now()-interval '90 days'",
-  );
+  if (options.retention) {
+    await pool.query(
+      "delete from private.call_transcripts where expires_at<now()",
+    );
+    await pool.query(
+      "delete from public.audit_logs where created_at<now()-interval '90 days'",
+    );
+  }
 }
