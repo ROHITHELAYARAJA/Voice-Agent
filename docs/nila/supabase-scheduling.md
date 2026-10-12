@@ -19,7 +19,7 @@ The initial capacity is two attempted calls per minute, with minute-level schedu
 
 Apply `supabase/migrations/20261012172645_supabase_cron_scheduler.sql` once. It installs `pg_cron`, `pg_net`, the private dispatch and cleanup functions, and four initially paused jobs. It does not delete application records during installation.
 
-Redeploy `nila-api-stage` from the latest `codex/nila-platform` commit. Its `/health` response must include `scheduler: supabase-cron-v1`. The API must use the same internal secret as the local prepared environment file.
+Redeploy the API service at `https://nila-api-staging.onrender.com` from the latest `codex/nila-platform` commit, with `npm run start:api` as its Start Command. Its `/health` response must include `scheduler: supabase-cron-v1`. The API must use the same internal secret as the local prepared environment file. The earlier address ending in `nila-api-stage` returns 404 and must not be used.
 
 Run `npm run configure:scheduler` from the repository root. It reads the ignored Render API and voice environment files, configures Vault using parameterized SQL over a certificate-verified database connection, and makes an authenticated non-dialing API verification request. Only a successful scheduler verification enables the four Cron jobs. It prints no credentials. If verification fails, the jobs remain paused; repair the API deployment and rerun it.
 

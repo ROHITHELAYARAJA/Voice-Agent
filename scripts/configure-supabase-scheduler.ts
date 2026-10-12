@@ -55,17 +55,24 @@ try {
       Authorization: `Bearer ${env.INTERNAL_SERVICE_SECRET}`,
     },
     body: JSON.stringify({ dry_run: true }),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(45000),
     redirect: "error",
   }).catch(() => undefined);
-  const value = response?.ok ? await response.json() : undefined;
+  const value = response?.ok
+    ? await response.json().catch(() => undefined)
+    : undefined;
   if (
     value?.scheduler !== "supabase-cron-v1" ||
     value.status !== "configured"
   ) {
+    const failure = response
+      ? `HTTP ${response.status}`
+      : "connection failed or timed out";
+    console.log(`Scheduler verification at ${api.origin}: ${failure}.`);
     console.log(
-      "Vault configured. Cron jobs remain paused until the API's scheduler endpoint passes verification. Redeploy the API, then rerun this command.",
+      "Vault configured. Cron activation was skipped. Check the API address, deployed commit and matching internal secret, then rerun this command.",
     );
+    process.exitCode = 1;
   } else {
     await pool.query(
       "select cron.alter_job(jobid,active:=true) from cron.job where jobname in ('nila-calls','nila-reconcile','nila-recaps','nila-retention')",

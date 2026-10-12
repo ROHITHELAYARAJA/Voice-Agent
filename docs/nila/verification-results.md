@@ -54,3 +54,9 @@ All 40 automated tests and strict TypeScript checks pass. New tests cover unauth
 The production Supabase CA was downloaded from the official certificate endpoint referenced by Supabase Studio and bundled as a public trust anchor. Certificate validation remains enabled. Its addition fixed the observed self-signed certificate chain error during secure PostgreSQL connection verification.
 
 The current deployed API does not yet expose the new scheduler route. Its redeployment and subsequent Cron activation remain outstanding. Existing Render services were not deleted through the provider dashboard; an uncreated worker can be cancelled, and any already-created worker must be suspended or explicitly deleted by the owner.
+
+## Deployment address verification
+
+After the owner reported the redeployment as Live, public checks found that `https://nila-api-stage.onrender.com/health` returns HTTP 404. The actual API at `https://nila-api-staging.onrender.com/health` returns HTTP 200, but without the new scheduler version marker. Its authenticated scheduler verification returns a Fastify route-not-found HTTP 404. The voice service's health endpoint returns HTTP 200.
+
+Prepared cloud environment files and the Supabase Vault API origin now point to the verified API address ending in `staging`. All four Cron jobs remain paused pending deployment of the scheduler endpoint. No scheduled telephone call or Render service deletion has occurred. Strict TypeScript passed again after improving the setup command's timeout and failure diagnostics.
