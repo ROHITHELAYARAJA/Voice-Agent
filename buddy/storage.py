@@ -276,3 +276,27 @@ class Store:
                     (utc_now(), session_id),
                 )
         return self.phone_turn(call_sid, turn)
+
+    def accept_phone_speech(self, call_sid: str, turn: int, speech: str) -> dict:
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT * FROM phone_turns WHERE call_sid = ? AND turn = ?", (call_sid, turn)
+            ).fetchone()
+            if row is None:
+                raise KeyError("Phone turn not found")
+            if row["speech"] is not None and row["speech"] != speech:
+                raise ValueError("This phone turn already has a different answer")
+            if row["speech"] is None:
+                db.execute(
+                    "UPDATE phone_turns SET speech = ? WHERE call_sid = ? AND turn = ?",
+                    (speech, call_sid, turn),
+                )
+                db.execute(
+                    "INSERT INTO transcripts(session_id, role, content, created_at) VALUES (?, 'user', ?, ?)",
+                    (row["session_id"], speech, utc_now()),
+                )
+                db.execute(
+                    "UPDATE sessions SET version = version + 1, updated_at = ?, next_sync_at = 0 WHERE id = ?",
+                    (utc_now(), row["session_id"]),
+                )
+        return self.phone_turn(call_sid, turn)
