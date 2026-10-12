@@ -35,7 +35,13 @@ def print_status(settings: Settings) -> None:
         logger.info("Call mode: one question at a time | trial-compatible Gather + Play")
     else:
         logger.info(
-            "Listen: Deepgram Flux | Think: %s | Speak: ElevenLabs Jessica (%s)",
+            "Listen: "
+            + (
+                "local Whisper Tamil"
+                if settings.stream_stt_provider == "whisper"
+                else "Deepgram Flux"
+            )
+            + " | Think: %s | Speak: ElevenLabs Jessica (%s)",
             settings.llm_model,
             settings.tts_model,
         )
@@ -47,6 +53,11 @@ def print_status(settings: Settings) -> None:
         logger.info(
             "Deepgram usage applies to your project credits; trial phone usage remains with Twilio"
         )
+    logger.info(
+        "Language: %s | recognition: %s | local Whisper on telephone requires Media Streams",
+        settings.conversation_language,
+        settings.phone_language,
+    )
     logger.info("Timezone: %s | Currency: %s", settings.timezone, settings.currency)
     missing = settings.missing_call_settings()
     logger.info(
