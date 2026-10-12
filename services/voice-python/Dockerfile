@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:0.11.23-python3.12-bookworm-slim
+FROM ghcr.io/astral-sh/uv:0.13.0-python3.12-trixie-slim@sha256:17af15d103f32869a63825517f9e8867ce98598937e3e5f5ce1e24313c552406
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1
 COPY pyproject.toml uv.lock README.md ./
