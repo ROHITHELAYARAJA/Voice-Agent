@@ -137,6 +137,10 @@ def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = 
             response.hangup()
             return Response(str(response), media_type="application/xml")
         runtime.store.update(session_id, call_sid=form.get("CallSid"), call_status="in-progress")
+        if settings.call_mode == "gather":
+            return Response(
+                runtime.phone.begin(session_id, form.get("CallSid")), media_type="application/xml"
+            )
         stream = response.connect().stream(
             url=settings.public_url.replace("https://", "wss://") + "/media"
         )
@@ -144,6 +148,30 @@ def create_app(settings: Settings | None = None, runtime: BuddyRuntime | None = 
         stream.parameter(name="stream_token", value=session["stream_token"])
         response.hangup()
         return Response(str(response), media_type="application/xml")
+
+    @application.post("/answer")
+    async def answer(request: Request):
+        form = await verified_form(request)
+        if settings.call_mode != "gather":
+            raise HTTPException(404, "Phone answer mode is not enabled.")
+        session_id = request.query_params.get("session_id", "")
+        session = runtime.store.get(session_id)
+        call_sid = form.get("CallSid")
+        owner_call = form.get("To") == settings.owner_phone_number or (
+            form.get("From") == settings.owner_phone_number
+            and form.get("To") == settings.twilio_phone_number
+        )
+        if not call_sid or call_sid != session["call_sid"] or not owner_call:
+            raise HTTPException(403, "Call mismatch.")
+        try:
+            turn = int(request.query_params.get("turn", ""))
+            speech = str(form.get("SpeechResult") or form.get("Digits") or "").strip()
+            if len(speech) > 4000 or turn < 0 or turn >= settings.gather_max_turns:
+                raise ValueError("Invalid phone answer")
+            xml = await runtime.phone.answer(session_id, call_sid, turn, speech)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return Response(xml, media_type="application/xml")
 
     @application.post("/call-status")
     async def call_status(request: Request):
