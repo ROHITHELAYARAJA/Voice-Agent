@@ -31,19 +31,21 @@ export async function api<T>(
         ...options.headers,
       },
       cache: "no-store",
-      signal: options.signal ?? AbortSignal.timeout(15000),
+      signal: options.signal ?? AbortSignal.timeout(90000),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError")
+      throw new Error(
+        "Nila's server is taking longer than expected to respond. Refresh to check whether your changes were saved before trying again.",
+      );
     throw new Error(
-      "Your private data service could not be reached. Please try again shortly. If this continues, the app owner needs to check the service connection.",
+      "Nila could not reach its server. Check your internet connection and try again. If this continues, contact the app owner.",
     );
   }
-  const value = (await result
-    .json()
-    .catch(() => ({
-      error:
-        "The private data service returned an unexpected response. Please try again.",
-    }))) as T & { error?: string };
+  const value = (await result.json().catch(() => ({
+    error:
+      "The private data service returned an unexpected response. Please try again.",
+  }))) as T & { error?: string };
   if (!result.ok)
     throw new Error(value.error ?? "The request did not finish. Please retry.");
   if (value.error) throw new Error(value.error);
