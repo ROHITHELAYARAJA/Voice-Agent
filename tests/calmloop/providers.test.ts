@@ -115,6 +115,15 @@ it("shows safe, actionable errors without returning provider response details", 
       "twilio",
     ),
   ).toContain("trial accounts block Media Streams");
+  const trialMessage = providerVerificationMessage(
+    new Error("TRIAL_MEDIA_STREAMS_UNAVAILABLE"),
+    "twilio",
+  );
+  expect(trialMessage).toContain("This trial can make limited calls");
+  expect(trialMessage).toContain("not enabled in this website yet");
+  expect(trialMessage).not.toContain(
+    "Nila telephone calls require an upgraded account",
+  );
   expect(
     providerVerificationMessage(new Error("PROVIDER_HTTP_401"), "twilio"),
   ).toContain("Account SID and auth token");

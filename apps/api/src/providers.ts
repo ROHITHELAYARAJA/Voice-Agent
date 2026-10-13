@@ -19,7 +19,7 @@ export function providerVerificationMessage(
   if (code === "PROVIDER_HTTP_403")
     return `${name} denied access. Check this key's permissions and the account's restrictions.`;
   if (code === "TRIAL_MEDIA_STREAMS_UNAVAILABLE")
-    return "Twilio accepted your credentials, but this is a trial account. Its sample calls use a Twilio demo; trial accounts block Media Streams, which Nila needs for Deepgram and ElevenLabs. Nila telephone calls require an upgraded account with a voice-enabled caller number.";
+    return "Twilio accepted your credentials. This trial can make limited calls, but trial accounts block Media Streams used by Nila's current cloud voice service. The older question-and-answer trial calling mode is not enabled in this website yet. Your trial minutes do not enable streaming. Mood tracking and written journals are available without upgrading.";
   if (code === "CALLER_NUMBER_NOT_AUTHORIZED")
     return "Twilio accepted your credentials, but the caller number does not belong to this account. Use a number from Phone Numbers > Active numbers in the same account as your SID.";
   if (code === "CALLER_NUMBER_NOT_VOICE_ENABLED")
