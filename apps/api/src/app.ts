@@ -10,6 +10,7 @@ import { database } from "./db.ts";
 import { loadCredentials, saveCredentials } from "./credentials.ts";
 import {
   providerRequest,
+  providerVerificationMessage,
   twilioHeaders,
   validateProvider,
 } from "./providers.ts";
@@ -563,10 +564,10 @@ export async function buildApi(env: Environment, db = database(env)) {
       let verified;
       try {
         verified = await validateProvider(body);
-      } catch {
+      } catch (error) {
         throw new ApiError(
           422,
-          "The provider could not verify this connection. Check the credentials, caller number, permissions and credits.",
+          providerVerificationMessage(error, body.provider),
         );
       }
       await saveCredentials(db.pool, key, user.id, body, verified);

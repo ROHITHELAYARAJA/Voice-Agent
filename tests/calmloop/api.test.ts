@@ -20,6 +20,7 @@ const apps: Awaited<ReturnType<typeof buildApi>>[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 function token(aal = "aal1") {
   return `header.${Buffer.from(JSON.stringify({ sub: owner, aal, amr: [{ timestamp: Date.now() / 1000 }] })).toString("base64url")}.signature`;
@@ -83,6 +84,39 @@ async function fixture({
   return { app, writes, db };
 }
 describe("API authentication and ownership", () => {
+  it("explains rejected caller ownership without saving credentials or returning secrets", async () => {
+    const { app, db } = await fixture();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(
+              url.includes("IncomingPhoneNumbers")
+                ? { incoming_phone_numbers: [] }
+                : { status: "active", type: "Full" },
+            ),
+          ),
+      ),
+    );
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/providers",
+      headers: { authorization: `Bearer ${token()}` },
+      payload: {
+        provider: "twilio",
+        account_sid: "AC" + "a".repeat(32),
+        auth_token: "private-token".repeat(3),
+        caller_number: "+14155550100",
+      },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error).toContain(
+      "caller number does not belong to this account",
+    );
+    expect(response.body).not.toContain("private-token");
+    expect(db.pool.query).toHaveBeenCalledTimes(1);
+  });
   it("requires the internal secret before scheduler access and supports non-dialing verification", async () => {
     const { app, db } = await fixture();
     const request = {
