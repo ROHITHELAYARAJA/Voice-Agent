@@ -147,3 +147,20 @@ describe("approved voice wellness", () => {
     ).toBe(false);
   });
 });
+
+it.each([
+  "I will drink 5 L of water tomorrow.",
+  "I drank -5 L of water.",
+  "I drank maybe 5 L of water.",
+])("does not report planned or uncertain water: %s", (quote) => {
+  const input = {
+    statements: [{ kind: "reflection", quote }],
+    mood_score: null,
+    mood_evidence: "",
+    user_turns: ["yes", quote, "yes"],
+    summary_approved: true,
+    generation: 1,
+    wellness: [{ topic: "water", value: 5, unit: "L", quote }],
+  };
+  expect(() => validatedReflection(input)).toThrow();
+});
