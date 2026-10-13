@@ -6,6 +6,8 @@ The website at https://nilavoiceai.vercel.app/auth returns HTTP 200. The screens
 
 The deployed website still references the obsolete API address https://nila-api-stage.onrender.com. The working API is https://nila-api-staging.onrender.com, and it allows requests from the current website origin. All four Supabase Cron jobs are active. Platform calling is disabled.
 
+After the owner reported updating Supabase and redeploying Vercel, the production website was checked again: its JavaScript references the correct API address ending in `staging`; the obsolete API and Vercel hostnames are absent from the loaded sign-in bundles. The sign-in page returns HTTP 200, the callback route handles a missing code with a sign-in error redirect, and API health returns HTTP 200 with the scheduler version marker. All four Cron jobs remain active and platform calling remains disabled. A fresh owner Google login is still needed to verify the complete OAuth round trip; Supabase URL settings were not inspected directly.
+
 ## 1. Correct Supabase's login destination
 
 Open https://supabase.com/dashboard/project/ilxcwgogkeedqqjmubfc/auth/url-configuration.
