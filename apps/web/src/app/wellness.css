@@ -614,13 +614,15 @@ section[id] {
   justify-content: center;
 }
 .sleep-bar {
+  height: 100%;
   width: 100%;
   max-width: 36px;
   border-radius: 6px 6px 0 0;
   background: var(--accent);
   opacity: 0.75;
   min-height: 2px;
-  transition: height 0.35s;
+  transform-origin: bottom;
+  transition: transform 0.35s;
 }
 .sleep-bar.missing {
   min-height: 0;
@@ -686,12 +688,14 @@ section[id] {
   background: var(--surface);
 }
 .water-vessel > div {
+  height: 100%;
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   background: var(--water-fill);
-  transition: height 0.35s;
+  transform-origin: bottom;
+  transition: transform 0.35s;
 }
 .water-vessel > span {
   position: relative;
@@ -1289,5 +1293,32 @@ section[id] {
   .sleep-bar,
   .water-vessel > div {
     transition: none;
+  }
+}
+.range-switch button,
+.nightly-settings,
+.date-pager button {
+  min-height: 44px;
+  min-width: 44px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .landing-steps,
+    .landing-feature-strip,
+    .landing-final {
+      animation: gentle-scroll 1s both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 70%;
+    }
+  }
+}
+@keyframes gentle-scroll {
+  from {
+    opacity: 0.85;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

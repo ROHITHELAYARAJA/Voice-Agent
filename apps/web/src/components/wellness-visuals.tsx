@@ -62,7 +62,7 @@ export function SnapshotMetrics({
             <div className="metric-visual" aria-hidden="true">
               {metric.topic === "water" ? (
                 <div className="water-vessel">
-                  <div style={{ height: `${fill * 100}%` }} />
+                  <div style={{ transform: `scaleY(${fill})` }} />
                   <span>💧</span>
                 </div>
               ) : metric.topic === "sleep" ? (
@@ -195,10 +195,10 @@ export function TrendDiagram({
                   : "sleep-bar missing"
               }
               style={{
-                height:
+                transform:
                   typeof row.value === "number"
-                    ? `${(row.value / maximum) * 100}%`
-                    : "0%",
+                    ? `scaleY(${row.value / maximum})`
+                    : "scaleY(0)",
               }}
             />
             <i />
