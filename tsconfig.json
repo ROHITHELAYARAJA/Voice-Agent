@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "apps/api/**/*.ts",
+    "packages/**/*.ts",
+    "services/call-worker/**/*.ts",
+    "services/journal-processor/**/*.ts",
+    "tests/calmloop/**/*.ts",
+    "supabase/tests/**/*.ts",
+    "scripts/import-legacy-providers.ts",
+    "scripts/configure-supabase-scheduler.ts"
+  ],
+  "exclude": ["node_modules", "apps/web"]
+}

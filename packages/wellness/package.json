@@ -1,0 +1,10 @@
+{
+  "name": "@nila/wellness",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/insights.ts",
+  "dependencies": {
+    "@nila/shared-types": "0.1.0"
+  }
+}

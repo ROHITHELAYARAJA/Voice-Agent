@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: nila-api-staging
+    runtime: node
+    plan: 0.5c-512mb
+    autoDeployTrigger: off
+    buildCommand: npm ci
+    startCommand: npm run start:api
+    healthCheckPath: /health
+    envVars:
+      - fromGroup: nila-staging
+      - key: NODE_VERSION
+        value: 24.13.1
+      - key: NODE_ENV
+        value: production
+  - type: web
+    name: nila-voice-staging
+    runtime: docker
+    plan: 0.5c-512mb
+    autoDeployTrigger: off
+    dockerfilePath: services/voice-python/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - fromGroup: nila-staging-voice

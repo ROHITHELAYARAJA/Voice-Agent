@@ -1,4 +1,17 @@
-# Buddy: telephone check-ins with Deepgram and Jessica
+# Nila and the Buddy voice prototype
+
+Nila is the new private wellness application in `apps/web`, with its product API in `apps/api`, tenant-aware Python voice adapter in `services/voice-python`, shared call worker, and Supabase migrations. The existing Buddy phone and Excel prototype below remains separate.
+
+Run `npm ci` and `npm run dev` to open the local Nila website at <http://localhost:3000>. The public product preview uses clearly labelled sample information. The supplied Supabase project is connected and its initial schema is installed. Cloud calling still needs the backend credentials, Render and Vercel resources, and approved staging verification. The separate website checkout is `C:/Users/erohi/OneDrive/Desktop/Nila-`.
+
+- [Design system and page plan](docs/nila/design-system.md)
+- [Architecture, migration plan and diagrams](docs/nila/architecture.md)
+- [Setup and deployment](docs/nila/setup-and-deployment.md)
+- [Verification and launch gates](docs/nila/launch-gates.md)
+
+Automatic deployment and outbound platform calling are disabled until staging approval and provider verification. Existing personal keys may be imported only into the explicitly verified owner's account using `npm run import:legacy`; never share those keys across customers. `npm run preflight` reports missing local deployment settings without displaying secret values.
+
+## Buddy: telephone check-ins with Deepgram and Jessica
 
 Buddy calls your configured number, asks about your day one question at a time, and writes answers and conversation logs to local Excel. Your computer runs the server and storage; the terminal shows each question, spoken answer, interpretation and save result.
 
@@ -21,25 +34,27 @@ Phone recognition waits one second after speech stops; set `PHONE_SPEECH_TIMEOUT
 
 ## Configuration
 
-| Variable | Purpose |
-| --- | --- |
-| `CALL_MODE=gather` | Question-by-question phone conversation |
-| `GATHER_AI_PROVIDER=deepgram`, `DEEPGRAM_API_KEY` | Managed, validated answer interpretation |
-| `PHONE_VOICE_PROVIDER=eleven_labs`, `TTS_CONNECTION=managed` | Jessica through the Deepgram key |
-| `LLM_PROVIDER=open_ai`, `LLM_MODEL=gpt-4.1-mini` | Requested reasoning model |
-| `TTS_MODEL=eleven_turbo_v2_5` | Requested Jessica model |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | Account authentication and signed webhooks |
-| `TWILIO_PHONE_NUMBER` | Assigned calling number |
-| `OWNER_PHONE_NUMBER` | Verified destination in international format |
-| `NGROK_AUTHTOKEN` | Public HTTPS connection to this computer |
-| `LOCAL_MODEL=qwen3:1.7b` | Downloaded Ollama model |
-| `LOCAL_AI_URL=http://127.0.0.1:11434` | Loopback model service |
-| `PHONE_LANGUAGE=en-IN` | Twilio speech recognition language |
-| `PHONE_SPEECH_TIMEOUT=1` | Seconds of silence that end an answer; 1-5 allowed |
-| `PHONE_VOICE=Polly.Aditi` | Voice when the optional Twilio voice provider is selected |
-| `SHEET_BACKEND=excel` | Default local spreadsheet copy |
-| `EXCEL_FILE` | Optional `.xlsx` path; defaults to `data/Buddy Daily Check-ins.xlsx` |
-| `TIMEZONE=Asia/Kolkata`, `CURRENCY=INR` | Date and default currency |
+| Variable                                                                    | Purpose                                                              |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `CALL_MODE=gather`                                                          | Question-by-question phone conversation                              |
+| `GATHER_AI_PROVIDER=deepgram`, `DEEPGRAM_API_KEY`                           | Managed, validated answer interpretation                             |
+| `PHONE_VOICE_PROVIDER=eleven_labs`, `TTS_CONNECTION=managed`                | Jessica through the Deepgram key                                     |
+| `LLM_PROVIDER=open_ai`, `LLM_MODEL=gpt-4.1-mini`                            | Requested reasoning model                                            |
+| `TTS_MODEL=eleven_turbo_v2_5`                                               | Requested Jessica model                                              |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`                                   | Account authentication and signed webhooks                           |
+| `TWILIO_PHONE_NUMBER`                                                       | Assigned calling number                                              |
+| `OWNER_PHONE_NUMBER`                                                        | Verified destination in international format                         |
+| `NGROK_AUTHTOKEN`                                                           | Public HTTPS connection to this computer                             |
+| `LOCAL_MODEL=qwen3:1.7b`                                                    | Downloaded Ollama model                                              |
+| `LOCAL_AI_URL=http://127.0.0.1:11434`                                       | Loopback model service                                               |
+| `PHONE_LANGUAGE=ta-IN`                                                      | Twilio Tamil speech recognition language                             |
+| `CONVERSATION_LANGUAGE=ta`, `PHONE_SPEECH_MODEL=googlev2_chirp_3`           | Tamil conversation and trial recognition                             |
+| `STREAM_STT_PROVIDER=whisper`, `WHISPER_MODEL=small`, `WHISPER_DEVICE=auto` | Optional local Tamil recognition on eligible stream accounts         |
+| `PHONE_SPEECH_TIMEOUT=1`                                                    | Seconds of silence that end an answer; 1-5 allowed                   |
+| `PHONE_VOICE=Polly.Aditi`                                                   | Voice when the optional Twilio voice provider is selected            |
+| `SHEET_BACKEND=excel`                                                       | Default local spreadsheet copy                                       |
+| `EXCEL_FILE`                                                                | Optional `.xlsx` path; defaults to `data/Buddy Daily Check-ins.xlsx` |
+| `TIMEZONE=Asia/Kolkata`, `CURRENCY=INR`                                     | Date and default currency                                            |
 
 ## Conversation and saving
 
@@ -69,6 +84,22 @@ Buddy allows at most 10 submitted answers per call, including silence, clarifica
 
 ## Optional modes
 
+The active phone settings now use Tamil speech recognition and Jessica's Tamil voice. The editable prompt supplement in `prompts/tamil_voice_agent.txt` is loaded by both managed and local interpretation. It preserves negation, corrections, unfinished work and uncertain money, accepts Tamil and Tanglish, and keeps final review mandatory. Trial Gather transcribes through Twilio, not local Whisper.
+
+OpenAI Whisper is installed from the official repository at pinned commit `86098128c0b4f24f0e2aa2994de830614b474227`. Its multilingual small checkpoint is downloaded under `data/whisper-models`. Windows uses CUDA PyTorch; phone PCM is passed directly to Whisper without an FFmpeg subprocess. Prepare or test it with:
+
+```powershell
+uv sync --extra whisper
+uv run --extra whisper python setup_whisper.py
+uv run --extra whisper python setup_whisper.py --audio 'C:\path\Tamil sample.wav'
+```
+
+Your account was checked as Trial on 2026-10-12. [Twilio blocks Stream on trial accounts](https://www.twilio.com/docs/usage/trials/try-out-voice), so Buddy rejects this combination before dialing. No upgrade or billing change was made. Keep `CALL_MODE=gather` for the current account. On an account that permits Media Streams, set `CALL_MODE=stream`, `STREAM_STT_PROVIDER=whisper`, and `PHONE_VOICE_PROVIDER=eleven_labs`, then run `uv run --extra whisper python run.py --call`.
+
+The Whisper path uses WebRTC VAD independently of transcription. After three 20 ms voiced frames it sends Twilio clear, cancels Jessica playback and interpretation, and advances a response generation counter. Late synthesis, interpretations and cleared playback marks cannot restart speech or approve completion. After 700 ms of silence, Whisper transcribes the answer, the existing AI validates it, and Buddy asks the next question. Too-short noise resumes the current prompt. Final approval requires acknowledged summary playback. These controls passed simulated stream tests; real telephone interruption remains unverified because the trial blocks streaming.
+
+Gather nests Jessica playback inside speech collection, allowing answers during prompts. The trial does not provide the raw audio needed for Buddy's local speech-onset control. Its interruption timing and Tamil recognition still require a real call test. `STREAM_STT_PROVIDER=deepgram` retains the original English Flux path on eligible accounts; Flux is not used for Tamil transcription.
+
 `CALL_MODE=stream` connects Twilio Media Streams directly to Deepgram Flux, GPT-4.1 Mini and Jessica. Twilio's current trial blocks Stream, so Buddy rejects this mode before dialing on a trial account. Direct telephone streaming requires µ-law at 8 kHz in both directions. The browser example in `outputs/agent-settings/browser.json` uses your requested linear16 48 kHz input and 24 kHz output, with the Buddy prompt and tools filled in. `Welcome` alone proves a connection; model and audio checks are separate.
 
 To restore local reasoning and Twilio speech, set `GATHER_AI_PROVIDER=local` and `PHONE_VOICE_PROVIDER=twilio`, then run `uv run python setup_local.py`. Ollama is loopback-only and cloud models are rejected. Deepgram and Jessica are unused in that combination.
@@ -84,6 +115,8 @@ uv run pytest -q --basetemp=outputs/pytest-phone-check
 uv run ruff check .
 uv run python verify_deepgram.py
 uv run python verify_local.py
+uv run --extra whisper pytest -q --basetemp=outputs/pytest-whisper-check
+uv run python verify_tamil.py
 ```
 
 The updated Deepgram/Jessica configuration passed 55 regression tests and lint on 2026-10-12. The earlier GPT-6 configuration had a real answered telephone test that connected through the authenticated trial webhook, captured speech, and wrote nine conversation rows to the daily Excel workbook. That live check-in ended before final review, so it remains interrupted. The live connection receipt is in `outputs/deepgram-telephone-verification`.
@@ -97,3 +130,5 @@ The speed checks compare model and voice providers in `outputs/latency-verificat
 The local verifier uses actual model inference with signed simulated webhooks, checks confirmed totals, and creates an isolated workbook and receipt in `outputs/local-verification`. It does not call your phone or alter the daily workbook. Real phone verification requires an accepted call, audible prompt, captured speech and saved answer; authentication alone is insufficient.
 
 Architecture ownership and the retained Archify contract are in `ARCHITECTURE.md`. References: [Twilio Gather](https://www.twilio.com/docs/voice/twiml/gather), [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs), [Ollama chat API](https://docs.ollama.com/api/chat).
+
+Tamil verification on 2026-10-12 passed 65 regression tests and lint. Actual GPT-4.1 Mini and Jessica providers completed a simulated Tamil webhook-to-Excel check with confirmed 200.00 INR, 28 audio responses, and a maximum 1.797-second webhook. No telephone call was placed and the daily workbook was not modified. Receipts are in `outputs/tamil-verification` and `outputs/whisper-verification`. Whisper preserved the 120-rupee amount in a synthetic Tamil Jessica sample, including after telephone-codec conversion, with some spelling differences. Accuracy with a live human Tamil caller remains unverified.

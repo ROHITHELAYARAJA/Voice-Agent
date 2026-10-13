@@ -12,4 +12,15 @@ outputs/
 outputs/
 .archify/
 .local/
+supabase/.temp/
 .pytest_tmp/
+node_modules
+.env*
+!.env.example
+!.env.calmloop.example
+!apps/web/.env.example
+.next/
+.cache/
+playwright-report/
+test-results/
+*.tsbuildinfo

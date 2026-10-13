@@ -236,7 +236,8 @@ async def serve(settings: Settings, args) -> int:
         if args.call or args.resume:
             try:
                 await runtime.start_call(args.resume)
-            except IntegrationError:
+            except IntegrationError as exc:
+                logger.error("%s", exc)
                 logger.warning(
                     "The call did not start. Buddy and ngrok remain online; use call to retry after fixing the reported issue."
                 )

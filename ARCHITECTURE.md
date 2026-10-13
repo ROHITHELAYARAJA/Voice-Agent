@@ -18,6 +18,8 @@ The retained Archify specification under `.archify` describes Buddy's architectu
 | SQLite answers, transcripts and persistent phone responses | `buddy/storage.py` |
 | Atomic Excel saves and optional Google sync | `buddy/excel.py`, `buddy/sheets.py` |
 | Optional Deepgram streaming relay | `buddy/bridge.py`, `buddy/agent.py` |
+| Tamil prompt and localized questions | `buddy/language.py`, `prompts/tamil_voice_agent.txt` |
+| Local Whisper and interruption controls | `buddy/whisper_stt.py`, `buddy/stream_audio.py`, `buddy/whisper_bridge.py` |
 | Actual provider verification without phone calls | `verify_local.py`, `verify_deepgram.py` |
 
 Configured call path: terminal -> Jessica audio preparation and model readiness -> Twilio Calls API -> authenticated /twiml -> Gather speech input -> authenticated /answer -> durable speech -> Deepgram InjectUserMessage / GPT-4.1 Mini structured interpretation -> server-validated answer -> Play Jessica WAV -> readback and explicit confirmation. Twilio transcribes online; Deepgram hosts reasoning and managed ElevenLabs voice. SQLite and Excel remain local. The optional local provider uses Ollama and Twilio Say.
@@ -37,3 +39,5 @@ The normal flow uses nine submitted answers, including consent and final review.
 Write path: speech or validated answer -> SQLite commit -> background writer -> atomic Excel replacement. Excel contains check-ins and conversation logs. Locked files retry, mismatched headers stop writes, and IDs prevent duplicate rows. Google Sheets is optional with separate dependencies. Unknown and estimated amounts stay explicit in notes, outside confirmed totals.
 
 The original media stream path remains optional through CALL_MODE=stream and requires provider access. The local AI endpoint is loopback-only and cloud models are rejected. Call status reads release busy/no-answer/completed slots and ignore duplicate or regressing updates. A rejected initial call leaves Buddy and ngrok online.
+
+Trial Gather uses Tamil Chirp 3 STT. Eligible Stream accounts can deliver inbound µ-law audio to per-call stateful PCM conversion and WebRTC VAD, then local Whisper small. Shared interpretation and review rules continue to own validated answers. Voice onset clears Twilio playback and cancels inference before transcription; generation checks prevent stale output from being sent or saved. Completion requires acknowledged summary playback and explicit approval. Cleared marks never satisfy this prerequisite.

@@ -100,19 +100,17 @@ class PhoneConversation:
 
     def summary_parts(self, session_id: str) -> list[str]:
         state = self.checkin.state(session_id)
-        labels = (
-            TAMIL_LABELS
-            if self.settings.conversation_language == "ta"
-            else {
-                "accomplishments": "Progress",
-                "learning": "Learning",
-                "spending": "Spending",
-                "income": "Income",
-                "wellbeing": "Feeling",
-                "tomorrow": "Tomorrow",
-                "notes": "Other notes",
-            }
-        )
+        labels = {
+            "accomplishments": "Progress",
+            "learning": "Learning",
+            "spending": "Spending",
+            "income": "Income",
+            "wellbeing": "Feeling",
+            "tomorrow": "Tomorrow",
+            "notes": "Other notes",
+        }
+        if self.settings.conversation_language == "ta":
+            labels.update(TAMIL_LABELS)
         parts = [self.REVIEW_START]
         for section, label in labels.items():
             answer = state["answers"].get(section)
@@ -168,19 +166,21 @@ class PhoneConversation:
         action = f"{self.settings.public_url}/answer?session_id={session_id}&turn={turn}"
         if self.runtime.telephony.account_type == "Trial":
             action += "&webhook_token=" + self.store.get(session_id)["stream_token"]
-        gather_kwargs = {
-            "input": "speech dtmf",
-            "action": action,
-            "method": "POST",
-            "language": self.settings.phone_language,
-            "speech_timeout": self.settings.phone_speech_timeout,
-            "timeout": 8,
-            "num_digits": 1,
-            "action_on_empty_result": True,
-        }
-        if self.settings.phone_speech_model and self.settings.phone_speech_model != "default":
-            gather_kwargs["speech_model"] = self.settings.phone_speech_model
-        gather = response.gather(**gather_kwargs)
+        gather = response.gather(
+            input="speech dtmf",
+            action=action,
+            method="POST",
+            language=self.settings.phone_language,
+            speech_timeout=self.settings.phone_speech_timeout,
+            timeout=8,
+            num_digits=1,
+            action_on_empty_result=True,
+            **(
+                {"speech_model": self.settings.phone_speech_model}
+                if self.settings.phone_speech_model != "default"
+                else {}
+            ),
+        )
         if (
             section == "review"
             and prompt == self.summary(session_id)
@@ -210,22 +210,24 @@ class PhoneConversation:
 
     @staticmethod
     def permission(speech: str) -> bool | None:
+        if any(word in speech for word in ("ஆனால்", "திருத்த", "மாற்ற", "காத்திரு")):
+            return None
+        if any(word in speech for word in ("இல்லை", "வேண்டாம்", "நிறுத்த", "முடி")):
+            return False
+        if any(word in speech for word in ("ஆமா", "ஆம்", "சரி", "செய்யலாம்")):
+            return True
         value = re.sub(r"[^a-z0-9 ]", " ", speech.lower()).strip()
         if value == "1":
             return True
-        if value == "2":
-            return False
-        if re.search(r"\b(but|except|change|correction|actually|wait)\b", value) or re.search(
-            r"ஆனால்|திருத்த|மாற்ற|மாற்றம்|பொறுங்கள்", speech
+        if value == "2" or re.search(
+            r"\b(no|not|stop|later|busy|wrong|voicemail|cancel|don t|do not)\b", value
         ):
+            return False
+        if re.search(r"\b(but|except|change|correction|actually|wait)\b", value):
             return None
         if re.search(
-            r"\b(no|not|stop|later|busy|wrong|voicemail|cancel|don t|do not)\b", value
-        ) or re.search(r"இல்லை|வேண்டாம்|வேணாம்|பிறகு|தவறான", speech):
-            return False
-        if re.search(
             r"\b(yes|yeah|yep|sure|okay|ok|agree|go ahead|please continue|please save)\b", value
-        ) or re.search(r"ஆமாம்|ஆமாங்க|ஆம்|சரி|செய்யலாம்|தொடரலாம்|முடிக்கலாம்|சேமி", speech):
+        ):
             return True
         return None
 
