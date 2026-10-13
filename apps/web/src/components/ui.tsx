@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import {
   useEffect,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
   type ReactNode,
@@ -67,11 +68,24 @@ export function Modal({
   description?: string;
   children: ReactNode;
 }) {
+  const opener = useRef<HTMLElement | null>(null);
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
-        <Dialog.Content className="dialog-content">
+        <Dialog.Content
+          className="dialog-content"
+          onOpenAutoFocus={() => {
+            opener.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            opener.current?.focus();
+          }}
+        >
           <div className="row between">
             <Dialog.Title asChild>
               <h2>{title}</h2>

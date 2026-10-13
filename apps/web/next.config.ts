@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
-  transpilePackages: ["@nila/validation", "@nila/shared-types", "@nila/wellness"],
+  devIndicators: false,
+  transpilePackages: [
+    "@nila/validation",
+    "@nila/shared-types",
+    "@nila/wellness",
+  ],
   reactStrictMode: true,
   async headers() {
     return [

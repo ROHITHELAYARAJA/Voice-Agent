@@ -1,136 +1,98 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import {
   HouseIcon,
-  BookOpenIcon,
-  CalendarDotsIcon,
-  ChartLineUpIcon,
-  FlowerLotusIcon,
-  CheckCircleIcon,
-  PhoneIcon,
+  MoonStarsIcon,
   GearSixIcon,
-  ListIcon,
   SignOutIcon,
-  ArrowRightIcon,
+  ShieldCheckIcon,
+  FlowerLotusIcon,
 } from "@phosphor-icons/react";
 import { Brand, Modal, ThemeToggle, Notice, Button } from "./ui";
 import { useProduct } from "./product-context";
 import { browserClient } from "@/lib/supabase";
-const navigation = [
-  { path: "dashboard", label: "My space", icon: HouseIcon },
-  { path: "journals", label: "My journal", icon: BookOpenIcon },
-  { path: "moods", label: "Mood calendar", icon: CalendarDotsIcon },
-  { path: "insights", label: "My patterns", icon: ChartLineUpIcon },
-  { path: "self-care", label: "Self-care", icon: FlowerLotusIcon },
-  { path: "challenge", label: "30-day challenge", icon: CheckCircleIcon },
-  { path: "recap", label: "Weekly recap", icon: BookOpenIcon },
-  { path: "calls", label: "My check-ins", icon: PhoneIcon },
-  { path: "schedule", label: "Call schedule", icon: CalendarDotsIcon },
-  { path: "settings", label: "Settings & privacy", icon: GearSixIcon },
-];
-export function AppShell({
-  children,
-  view,
-}: {
-  children: ReactNode;
-  view?: string;
-}) {
-  const path = usePathname();
+import { SettingsView } from "./settings";
+import { ScheduleForm } from "./setup";
+
+export function AppShell({ children }: { children: ReactNode; view?: string }) {
   const { data, error, liveUpdateError, preview, refresh, loading } =
     useProduct();
-  const [menu, setMenu] = useState(false);
-  const active = view ?? path.split("/")[1] ?? "dashboard";
-  const href = (p: string) => (preview ? `/preview?view=${p}` : `/${p}`);
-  const nav = (
-    <nav aria-label="Your private space">
-      {navigation.map((n) => (
-        <Link
-          className={`nav-item ${active === n.path ? "active" : ""}`}
-          key={n.path}
-          href={href(n.path)}
-          onClick={() => setMenu(false)}
-        >
-          <n.icon
-            size={20}
-            weight={active === n.path ? "duotone" : "regular"}
-          />
-          {n.label}
-        </Link>
-      ))}
-    </nav>
-  );
+  const [panel, setPanel] = useState<
+    "profile" | "settings" | "schedule" | null
+  >(null);
+  const name = data?.profile.display_name || "You";
+  const home = preview ? "/preview" : "/dashboard";
   return (
     <>
       {preview && (
         <div className="preview-ribbon">
-          Public design preview · Illustrative data only ·{" "}
+          Design preview · Sample check-ins ·{" "}
           <Link className="text-link" href="/auth?mode=signup">
             Create your private space
           </Link>
         </div>
       )}
-      <div className="app-shell">
-        <aside className="sidebar">
-          <Brand />
-          {nav}
-          <div className="sidebar-bottom">
-            <div className="sidebar-care">
-              <FlowerLotusIcon size={25} weight="duotone" />
-              <p>A little care, one day at a time.</p>
-              <Link className="text-link" href={href("self-care")}>
-                Take a small pause <ArrowRightIcon size={12} />
-              </Link>
-            </div>
-            <Link className="nav-item" href="/privacy">
-              Privacy approach
+      <div className="snapshot-shell">
+        <aside className="snapshot-rail" aria-label="Nila navigation">
+          <Link
+            href={home}
+            aria-label="Your Nila dashboard"
+            className="rail-brand"
+          >
+            <FlowerLotusIcon size={30} weight="duotone" />
+          </Link>
+          <nav>
+            <Link
+              href={home}
+              aria-label="Dashboard"
+              className="rail-button active"
+            >
+              <HouseIcon size={23} weight="duotone" />
             </Link>
-          </div>
+            <button
+              className="rail-button"
+              aria-label="Nightly schedule"
+              onClick={() => setPanel("schedule")}
+            >
+              <MoonStarsIcon size={23} />
+            </button>
+            <button
+              className="rail-button"
+              aria-label="Settings and privacy"
+              onClick={() => setPanel("settings")}
+            >
+              <GearSixIcon size={23} />
+            </button>
+          </nav>
+          <Link
+            className="rail-button rail-privacy"
+            href="/privacy"
+            aria-label="Privacy approach"
+          >
+            <ShieldCheckIcon size={23} />
+          </Link>
         </aside>
-        <div className="workspace">
-          <header className="app-header">
-            <span className="breadcrumbs">
-              Your space /{" "}
-              <span style={{ color: "var(--ink)" }}>
-                {navigation.find((n) => n.path === active)?.label ?? "Welcome"}
-              </span>
-            </span>
-            <div className="mobile-app-nav">
+        <div className="snapshot-workspace">
+          <header className="snapshot-header">
+            <Brand />
+            <span className="header-note">Your private little universe</span>
+            <div className="header-actions">
+              <ThemeToggle />
               <button
-                className="icon-button"
-                aria-label="Open your space navigation"
-                onClick={() => setMenu(true)}
+                className="profile-trigger"
+                aria-label={`Open profile for ${name}`}
+                onClick={() => setPanel("profile")}
               >
-                <ListIcon size={20} />
+                <span className="avatar">{name.slice(0, 1).toUpperCase()}</span>
+                <span>{name}</span>
               </button>
             </div>
-            <div className="row" style={{ marginLeft: "auto" }}>
-              <ThemeToggle />
-              <div className="avatar" aria-label="Your account">
-                {(data?.profile.display_name ?? "You")
-                  .slice(0, 1)
-                  .toUpperCase()}
-              </div>
-              {!preview && (
-                <button
-                  className="icon-button"
-                  aria-label="Sign out"
-                  onClick={() =>
-                    void browserClient()
-                      .auth.signOut()
-                      .then(() => window.location.assign("/auth"))
-                  }
-                >
-                  <SignOutIcon size={17} />
-                </button>
-              )}
-            </div>
           </header>
-          <main id="main" className="app-main">
+          <main id="main" className="snapshot-main">
             {data && (error || liveUpdateError) && (
               <Notice error>
-                {error || liveUpdateError}{" "}
+                {error || liveUpdateError}
                 <Button
                   className="secondary"
                   disabled={loading}
@@ -142,46 +104,137 @@ export function AppShell({
             )}
             {data && !data.profile.onboarding_complete && !preview && (
               <Notice>
-                Start with mood tracking. Phone calls are optional.{" "}
+                Your nightly check-ins need connection and consent setup.{" "}
                 <Link className="text-link" href="/onboarding">
-                  Open your private space
+                  Finish setup
                 </Link>
               </Notice>
             )}
             {children}
           </main>
+          <nav className="snapshot-mobile-nav" aria-label="Mobile navigation">
+            <Link href={home} aria-label="Dashboard">
+              <HouseIcon size={23} />
+            </Link>
+            <button
+              aria-label="Nightly schedule"
+              onClick={() => setPanel("schedule")}
+            >
+              <MoonStarsIcon size={23} />
+            </button>
+            <button
+              aria-label="Settings and privacy"
+              onClick={() => setPanel("settings")}
+            >
+              <GearSixIcon size={23} />
+            </button>
+            <button
+              aria-label="Your profile"
+              onClick={() => setPanel("profile")}
+            >
+              <span className="avatar">{name.slice(0, 1)}</span>
+            </button>
+          </nav>
         </div>
       </div>
-      <nav className="bottom-nav" aria-label="Mobile quick navigation">
-        {navigation
-          .filter((n) =>
-            ["dashboard", "journals", "self-care", "settings"].includes(n.path),
-          )
-          .map((n) => (
-            <Link
-              href={href(n.path)}
-              key={n.path}
-              className={active === n.path ? "active" : ""}
-            >
-              <n.icon
-                size={22}
-                weight={active === n.path ? "duotone" : "regular"}
-              />
-              {n.path === "dashboard"
-                ? "My space"
-                : n.path === "settings"
-                  ? "Settings"
-                  : n.label}
-            </Link>
-          ))}
-      </nav>
       <Modal
-        open={menu}
-        onOpenChange={setMenu}
-        title="Your space"
-        description="A little room for every part of your day."
+        open={!!panel}
+        onOpenChange={(open) => {
+          if (!open) setPanel(null);
+        }}
+        title={
+          panel === "profile"
+            ? "Your space, your name"
+            : panel === "schedule"
+              ? "Your nightly call"
+              : "Settings & privacy"
+        }
+        description={
+          panel === "profile"
+            ? "Your account and private check-in preferences."
+            : "Change configuration here. Daily wellness comes from your phone conversations."
+        }
       >
-        {nav}
+        {panel === "profile" && (
+          <div className="profile-card">
+            <span className="profile-avatar">{name.slice(0, 1)}</span>
+            <h3>{name}</h3>
+            <span className="muted">
+              {data?.profile.email ||
+                (preview ? "Preview account" : "Signed-in account")}
+            </span>
+            <dl>
+              <div>
+                <dt>Time zone</dt>
+                <dd>{data?.profile.timezone}</dd>
+              </div>
+              <div>
+                <dt>Phone</dt>
+                <dd>{data?.phones[0]?.masked_number ?? "Not connected"}</dd>
+              </div>
+              <div>
+                <dt>Language</dt>
+                <dd>{data?.preferences?.language ?? "Not set"}</dd>
+              </div>
+              <div>
+                <dt>Audio recording</dt>
+                <dd>Off</dd>
+              </div>
+            </dl>
+            <div className="profile-providers">
+              {(["twilio", "deepgram", "elevenlabs"] as const).map(
+                (provider) => (
+                  <span key={provider} className="small-chip">
+                    {provider}
+                    <i
+                      aria-label={
+                        data?.connections.some(
+                          (c) =>
+                            c.provider === provider && c.status === "connected",
+                        )
+                          ? "Connected"
+                          : "Not connected"
+                      }
+                    >
+                      {data?.connections.some(
+                        (c) =>
+                          c.provider === provider && c.status === "connected",
+                      )
+                        ? "✓"
+                        : "—"}
+                    </i>
+                  </span>
+                ),
+              )}
+            </div>
+            <div className="button-row">
+              <button className="button" onClick={() => setPanel("settings")}>
+                Settings & privacy
+              </button>
+              <button
+                className="button secondary"
+                onClick={() => setPanel("schedule")}
+              >
+                Nightly schedule
+              </button>
+            </div>
+            {!preview && (
+              <button
+                className="text-button signout-button"
+                onClick={() =>
+                  void browserClient()
+                    .auth.signOut()
+                    .then(() => window.location.assign("/auth"))
+                }
+              >
+                <SignOutIcon size={18} />
+                Sign out
+              </button>
+            )}
+          </div>
+        )}
+        {panel === "settings" && <SettingsView />}
+        {panel === "schedule" && <ScheduleForm />}
       </Modal>
     </>
   );

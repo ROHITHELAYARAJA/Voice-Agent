@@ -458,10 +458,8 @@ export function ScheduleForm() {
   return (
     <section className="card">
       <span className="eyebrow">A TIME THAT FITS YOUR LIFE</span>
-      <h2>Your check-in schedule</h2>
-      <p>
-        One optional check-in on the days you choose. Pause whenever you need.
-      </p>
+      <h2>Your evening check-in</h2>
+      <p>One nightly phone check-in. Pause whenever you need.</p>
       <form
         key={schedule?.id ?? "new"}
         onSubmit={(e) => {
@@ -470,9 +468,11 @@ export function ScheduleForm() {
         }}
       >
         <div className="form-grid">
-          <Field label="Local calling time">
+          <Field label="Evening calling time">
             <input
               type="time"
+              min="18:00"
+              max="23:59"
               required
               name="local_time"
               defaultValue={schedule?.local_time?.slice(0, 5) ?? "20:00"}
@@ -590,18 +590,18 @@ export function OnboardingView() {
           <span className="eyebrow">WELCOME TO YOUR LITTLE SPACE</span>
           <h1>Let's make this yours.</h1>
           <p>
-            Start with your mood and a little reflection. Phone calls are
-            optional.
+            Connect your nightly phone check-in. Your approved answers become
+            your private visual snapshot.
           </p>
         </div>
       </div>
       <section className="card">
         <span className="eyebrow">YOUR SPACE, AT YOUR PACE</span>
-        <h2>Start without phone calls</h2>
+        <h2>Explore your space first</h2>
         <p>
-          Track your mood, write private journals and try self-care activities.
-          No Twilio account, phone number or upgrade is required for these
-          features.
+          Open an empty dashboard while you arrange your provider connections.
+          Daily wellness is captured on the phone; nothing needs to be entered
+          here.
         </p>
         <label className="checkbox-row">
           <input
@@ -617,7 +617,7 @@ export function OnboardingView() {
           disabled={busy || preview || !adult}
           onClick={() => void finish("self_care")}
         >
-          {busy ? "Opening your space…" : "Use mood tracking without calls"}
+          {busy ? "Opening your space…" : "Open my dashboard"}
         </button>
         <p className="caption">
           Calls and speech processing stay off. Your connected provider keys
@@ -631,7 +631,7 @@ export function OnboardingView() {
           aria-controls="phone-onboarding"
           onClick={() => setPhoneSetup(!phoneSetup)}
         >
-          {phoneSetup ? "Hide phone setup" : "Set up optional phone calls"}
+          {phoneSetup ? "Hide phone setup" : "Set up nightly phone calls"}
         </button>
       </div>
       {!phoneSetup && <ProviderSetup />}

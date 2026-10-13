@@ -8,9 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { weeklyRecap } from "@nila/wellness";
+import { dateWindow, weeklyRecap } from "@nila/wellness";
 import type { Dashboard } from "@nila/shared-types";
 import { api, browserClient } from "@/lib/supabase";
+import { watchDashboard } from "@/lib/live-dashboard";
 const previewData: Dashboard = {
   profile: {
     display_name: "Rohith",
@@ -37,45 +38,111 @@ const previewData: Dashboard = {
 export const sampleDays = [5, 6, 7, 6, 8, 7];
 function sampleData(): Dashboard {
   const today = new Date();
-  const moods = sampleDays.map((score, i) => {
-    const date = new Date(today);
-    date.setDate(date.getDate() - 5 + i);
-    return {
-      id: `sample-${i}`,
-      entry_date: date.toISOString().slice(0, 10),
-      score,
-      tags: [i === 4 ? "Grateful" : "Reflective"],
-      source: "manual" as const,
-    };
-  });
+  const days = dateWindow("Asia/Kolkata", 16);
+  const moods = days
+    .filter((_, i) => i !== 5 && i !== 11)
+    .map((date, i) => {
+      const score = sampleDays[i % sampleDays.length]!;
+      return {
+        id: `sample-${i}`,
+        entry_date: date,
+        score,
+        tags: [i === 4 ? "Grateful" : "Reflective"],
+        source: "voice" as const,
+      };
+    });
   return {
     ...previewData,
     moods,
-    journals: [
-      {
-        id: "sample-journal",
-        entry_date: today.toISOString().slice(0, 10),
-        title: "Finding little moments of calm",
+    journals: moods
+      .map((mood, i) => ({
+        id: `sample-journal-${i}`,
+        entry_date: mood.entry_date,
+        title: "Your nightly snapshot",
         reflection:
-          "Today felt full, but a short walk helped me feel more present. I want to make room for a quiet moment tomorrow.",
+          "I felt happy, a little tired. I completed my project. A walk helped me unwind.",
+        statements: [
+          {
+            kind: "reflection" as const,
+            quote: "I felt happy, a little tired.",
+          },
+          { kind: "positive" as const, quote: "I completed my project." },
+        ],
         user_edit: null,
-        source: "manual",
-        topics: ["work"],
-        created_at: today.toISOString(),
-      },
-    ],
-    activities: [
+        source: "voice" as const,
+        topics: [],
+        created_at: `${mood.entry_date}T14:30:00Z`,
+        wellness: [
+          {
+            topic: "mood" as const,
+            value: mood.score,
+            unit: "score" as const,
+            quote: `My mood is ${mood.score} out of 10.`,
+          },
+          {
+            topic: "water" as const,
+            value:
+              i === moods.length - 1
+                ? 1.8
+                : Number((1.2 + (i % 4) * 0.3).toFixed(1)),
+            unit: "L" as const,
+            quote: `I drank ${i === moods.length - 1 ? 1.8 : (1.2 + (i % 4) * 0.3).toFixed(1)} liters of water.`,
+          },
+          {
+            topic: "sleep" as const,
+            value: i === moods.length - 1 ? 7 : 5 + (i % 4),
+            unit: "h" as const,
+            quote: `I slept ${i === moods.length - 1 ? 7 : 5 + (i % 4)} hours.`,
+          },
+          {
+            topic: "energy" as const,
+            value: 4 + (i % 5),
+            unit: "score" as const,
+            quote: `My energy is ${4 + (i % 5)} out of 10.`,
+          },
+          {
+            topic: "screen_time" as const,
+            value: 2 + (i % 3),
+            unit: "h" as const,
+            quote: `My screen time was ${2 + (i % 3)} hours.`,
+          },
+          {
+            topic: "achievement" as const,
+            value: "I completed my project.",
+            quote: "I completed my project.",
+          },
+          {
+            topic: "gratitude" as const,
+            value: "a quiet evening",
+            quote: "I'm grateful for a quiet evening.",
+          },
+          {
+            topic: "activity" as const,
+            value: "a short walk",
+            quote: "I went for a short walk.",
+          },
+        ],
+      }))
+      .reverse(),
+    schedules: [
       {
-        id: "sample-activity",
-        activity_key: "breathe",
-        completed_at: today.toISOString(),
+        id: "sample-schedule",
+        enabled: true,
+        local_time: "20:00",
+        timezone: "Asia/Kolkata",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        next_call_at_utc: null,
       },
     ],
-    challenge: Array.from({ length: 5 }, (_, i) => ({
-      day: i + 1,
-      status: "completed" as const,
-      cycle: "sample",
-    })),
+    calls: [
+      {
+        id: "sample-call",
+        status: "completed",
+        created_at: today.toISOString(),
+        finished_at: today.toISOString(),
+      },
+    ],
+    memories: [],
     recap: {
       average: 6.5,
       reportedDays: 6,
@@ -134,45 +201,25 @@ export function ProductProvider({
   const hasData = data !== null;
   useEffect(() => {
     if (preview || !hasData) return;
-    let disposed = false;
+    const controller = new AbortController();
     let cleanup = () => {};
-    void (async () => {
-      try {
-        const client = browserClient();
-        const { data: sessionData } = await client.auth.getSession();
-        const session = sessionData.session;
-        if (!session || disposed) return;
-        await client.realtime.setAuth(session.access_token);
-        if (disposed) return;
-        const channel = client
-          .channel(`user:${session.user.id}`, { config: { private: true } })
-          .on("broadcast", { event: "changed" }, () => {
-            void refresh();
-          })
-          .subscribe((status) => {
-            if (disposed) return;
-            if (status === "SUBSCRIBED") setLiveUpdateError("");
-            else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status))
-              setLiveUpdateError(
-                "Live updates are reconnecting. You can still use your space and refresh for the latest changes.",
-              );
-          });
-        if (disposed) {
-          void client.removeChannel(channel);
-          return;
-        }
-        cleanup = () => {
-          void client.removeChannel(channel);
-        };
-      } catch {
-        if (!disposed)
+    void watchDashboard(
+      browserClient(),
+      refresh,
+      setLiveUpdateError,
+      controller.signal,
+    )
+      .then((stop) => {
+        cleanup = stop;
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
           setLiveUpdateError(
             "Live updates are temporarily unavailable. Refresh to check for changes.",
           );
-      }
-    })();
+      });
     return () => {
-      disposed = true;
+      controller.abort();
       cleanup();
     };
   }, [refresh, preview, hasData]);

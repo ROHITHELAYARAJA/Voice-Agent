@@ -75,7 +75,7 @@ export async function buildApi(env: Environment, db = database(env)) {
         res: (r) => ({ statusCode: r.statusCode }),
       },
     },
-    bodyLimit: 20000,
+    bodyLimit: 64000,
   });
   await app.register(cors, { origin: env.WEB_ORIGIN, credentials: false });
   await app.register(helmet);
@@ -263,6 +263,28 @@ export async function buildApi(env: Environment, db = database(env)) {
     if (request.url.startsWith("/v1/")) await authenticate(request);
     if (request.url.startsWith("/internal/")) internal(request);
   });
+  app.addHook("preHandler", async (request) => {
+    const path = request.url.split("?")[0];
+    if (
+      request.method === "POST" &&
+      [
+        "/v1/moods",
+        "/v1/journals",
+        "/v1/activities",
+        "/v1/goals",
+        "/v1/challenge",
+      ].includes(path ?? "")
+    )
+      throw new ApiError(
+        405,
+        "Daily wellness information is saved from your approved Nila phone check-in.",
+      );
+    if (request.method === "PATCH" && path?.startsWith("/v1/goals/"))
+      throw new ApiError(
+        405,
+        "Goal progress is updated from your approved phone check-in.",
+      );
+  });
   app.post("/internal/scheduler/:task", async (request) => {
     const { task } = z
       .object({ task: z.enum(["calls", "reconcile", "recaps"]) })
@@ -310,7 +332,7 @@ export async function buildApi(env: Environment, db = database(env)) {
       client
         .from("journal_entries")
         .select(
-          "id,entry_date,title,reflection,user_edit,source,topics,statements,created_at",
+          "id,entry_date,title,reflection,user_edit,source,topics,statements,wellness,created_at",
         )
         .order("entry_date", { ascending: false })
         .limit(90),
@@ -347,6 +369,11 @@ export async function buildApi(env: Environment, db = database(env)) {
       client
         .from("verified_phone_numbers")
         .select("id,masked_number,verified_at"),
+      client
+        .from("voice_memories")
+        .select("id,value,quote,created_at")
+        .order("created_at", { ascending: false })
+        .limit(100),
     ]);
     const values = queries.map((result) =>
       checked({ data: result.data as unknown, error: result.error }),
@@ -357,7 +384,7 @@ export async function buildApi(env: Environment, db = database(env)) {
       .toISOString()
       .slice(0, 10);
     return {
-      profile: values[0],
+      profile: { ...(values[0] as object), email: user.email ?? "" },
       moods,
       journals,
       calls: values[3],
@@ -372,152 +399,50 @@ export async function buildApi(env: Environment, db = database(env)) {
         )[0]?.recurring_calls &&
         !!(values[9] as { transcription: boolean }[])[0]?.transcription,
       phones: values[10],
+      memories: values[11],
       recap: weeklyRecap(
         moods.filter((m) => m.entry_date >= cutoff),
         journals.filter((j) => j.entry_date >= cutoff),
       ),
     };
   });
-  app.post("/v1/moods", async (request) => {
-    const { client, user } = identity(request);
-    const body = moodInput.parse(request.body);
-    return checked(
-      await client
-        .from("mood_entries")
-        .upsert(
-          { ...body, user_id: user.id, source: "manual" },
-          { onConflict: "user_id,entry_date" },
-        )
-        .select()
-        .single(),
-    );
-  });
-  app.post("/v1/journals", async (request) => {
-    const { client, user } = identity(request);
-    const body = journalInput.parse(request.body);
-    const profile = checked(
-      await db.admin
-        .from("profiles")
-        .select("timezone")
-        .eq("user_id", user.id)
-        .single(),
-    );
-    return checked(
-      await client
-        .from("journal_entries")
-        .insert({
-          ...body,
-          user_id: user.id,
-          entry_date: new Intl.DateTimeFormat("en-CA", {
-            timeZone: profile.timezone,
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-          }).format(new Date()),
-          source: "manual",
-        })
-        .select()
-        .single(),
-    );
-  });
-  app.patch("/v1/journals/:id", async (request) => {
-    const { client } = identity(request);
-    const id = z.uuid().parse((request.params as { id: string }).id);
-    const body = z
-      .object({
-        title: z.string().min(1).max(120),
-        user_edit: z.string().max(10000),
-      })
-      .strict()
-      .parse(request.body);
-    return checked(
-      await client
-        .from("journal_entries")
-        .update(body)
-        .eq("id", id)
-        .select()
-        .single(),
-    );
-  });
+  for (const path of [
+    "/v1/moods",
+    "/v1/journals",
+    "/v1/activities",
+    "/v1/goals",
+    "/v1/challenge",
+  ])
+    app.post(path, async () => {
+      throw new ApiError(
+        405,
+        "Daily wellness information is saved from your approved Nila phone check-in.",
+      );
+    });
+  for (const path of ["/v1/journals/:id", "/v1/goals/:id"])
+    app.patch(path, async () => {
+      throw new ApiError(
+        405,
+        "Daily wellness information is saved from your approved Nila phone check-in.",
+      );
+    });
   app.delete("/v1/journals/:id", async (request) => {
     const { client } = identity(request);
     const id = z.uuid().parse((request.params as { id: string }).id);
     checked(await client.from("journal_entries").delete().eq("id", id));
     return { deleted: true };
   });
-  app.post("/v1/activities", async (request) => {
+  app.delete("/v1/memories/:id", async (request) => {
     const { client, user } = identity(request);
-    const body = z
-      .object({
-        activity_key: z.enum(
-          activities.map((a) => a.key) as [string, ...string[]],
-        ),
-      })
-      .strict()
-      .parse(request.body);
-    return checked(
-      await client
-        .from("self_care_activities")
-        .insert({ ...body, user_id: user.id })
-        .select()
-        .single(),
-    );
-  });
-  app.post("/v1/goals", async (request) => {
-    const { client, user } = identity(request);
-    const body = z
-      .object({ title: z.string().trim().min(1).max(160) })
-      .strict()
-      .parse(request.body);
-    return checked(
-      await client
-        .from("self_care_goals")
-        .insert({ ...body, user_id: user.id })
-        .select()
-        .single(),
-    );
-  });
-  app.get("/v1/goals", async (request) =>
+    const id = z.uuid().parse((request.params as { id: string }).id);
     checked(
-      await identity(request)
-        .client.from("self_care_goals")
-        .select("id,title,completed"),
-    ),
-  );
-  app.patch("/v1/goals/:id", async (request) => {
-    const body = z
-      .object({ completed: z.boolean() })
-      .strict()
-      .parse(request.body);
-    return checked(
-      await identity(request)
-        .client.from("self_care_goals")
-        .update(body)
-        .eq("id", z.uuid().parse((request.params as { id: string }).id))
-        .select()
-        .single(),
-    );
-  });
-  app.post("/v1/challenge", async (request) => {
-    const { client, user } = identity(request);
-    const body = z
-      .object({
-        cycle: z.uuid(),
-        day: z.number().int().min(1).max(30),
-        status: z.enum(["completed", "skipped"]),
-      })
-      .strict()
-      .parse(request.body);
-    return checked(
       await client
-        .from("challenge_progress")
-        .upsert(
-          { ...body, user_id: user.id },
-          { onConflict: "user_id,cycle,day" },
-        )
-        .select()
-        .single(),
+        .from("voice_memories")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id),
     );
+    return { deleted: true };
   });
   app.put("/v1/preferences", async (request) => {
     const { user } = identity(request);
@@ -856,6 +781,7 @@ export async function buildApi(env: Environment, db = database(env)) {
       "self_care_activities",
       "self_care_goals",
       "challenge_progress",
+      "voice_memories",
       "weekly_insights",
     ];
     const rows = await Promise.all(
@@ -1020,12 +946,40 @@ export async function buildApi(env: Environment, db = database(env)) {
           .single(),
       );
     }
+    const history = callbackMode
+      ? []
+      : checked(
+          await db.admin
+            .from("journal_entries")
+            .select("entry_date,wellness")
+            .eq("user_id", session.user_id)
+            .eq("source", "voice")
+            .order("created_at", { ascending: false })
+            .limit(7),
+        );
+    const memories = callbackMode
+      ? []
+      : checked(
+          await db.admin
+            .from("voice_memories")
+            .select("value")
+            .eq("user_id", session.user_id)
+            .order("created_at", { ascending: false })
+            .limit(20),
+        );
     return {
       session,
       preferences: prefs,
       profile,
       phone: session.destination_number ?? phone.phone_number,
       credentials,
+      history: history.map(
+        (entry: { entry_date: string; wellness: { topic: string }[] }) => ({
+          ...entry,
+          wellness: entry.wellness.filter((o) => o.topic !== "memory"),
+        }),
+      ),
+      memories,
     };
   });
   app.post("/internal/voice/:id/event", async (request) => {
@@ -1143,7 +1097,7 @@ export async function buildApi(env: Environment, db = database(env)) {
       }).format(new Date());
       const journal = (
         await client.query(
-          "insert into public.journal_entries(user_id,session_id,entry_date,title,reflection,source,topics,statements) values($1,$2,$3,$4,$5,'voice',$6,$7) on conflict(session_id) do nothing returning id",
+          "insert into public.journal_entries(user_id,session_id,entry_date,title,reflection,source,topics,statements,wellness) values($1,$2,$3,$4,$5,'voice',$6,$7,$8) on conflict(session_id) do nothing returning id",
           [
             row.user_id,
             id,
@@ -1152,14 +1106,28 @@ export async function buildApi(env: Environment, db = database(env)) {
             reflection.reflection,
             reflection.topics,
             JSON.stringify(body.statements),
+            JSON.stringify(body.wellness),
           ],
         )
       ).rows[0];
       if (journal) {
         if (reflection.mood_score !== null)
           await client.query(
-            "insert into public.mood_entries(user_id,journal_id,entry_date,score,source) values($1,$2,$3,$4,'voice') on conflict(user_id,entry_date) do nothing",
+            "insert into public.mood_entries(user_id,journal_id,entry_date,score,source) values($1,$2,$3,$4,'voice') on conflict(user_id,entry_date) do update set score=excluded.score,journal_id=excluded.journal_id,source='voice'",
             [row.user_id, journal.id, date, reflection.mood_score],
+          );
+        for (const observation of body.wellness.filter(
+          (o) => o.topic === "memory",
+        ))
+          await client.query(
+            "insert into public.voice_memories(user_id,journal_id,value,quote,permission_quote) values($1,$2,$3,$4,$5) on conflict(journal_id,value) do nothing",
+            [
+              row.user_id,
+              journal.id,
+              observation.value,
+              observation.quote,
+              observation.memory_permission,
+            ],
           );
         for (const statement of body.statements.filter(
           (s) => s.kind === "stress" && s.topic,

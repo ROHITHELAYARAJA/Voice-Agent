@@ -282,7 +282,7 @@ describe("API authentication and ownership", () => {
     ).toBe(401);
     expect(db.scoped).not.toHaveBeenCalled();
   });
-  it("takes the mood owner only from the verified identity", async () => {
+  it("rejects browser-entered moods and owner spoofing in voice-only mode", async () => {
     const { app, writes } = await fixture();
     const headers = { authorization: `Bearer ${token()}` };
     const good = await app.inject({
@@ -291,8 +291,8 @@ describe("API authentication and ownership", () => {
       headers,
       payload: { entry_date: "2026-10-12", score: 6, tags: [] },
     });
-    expect(good.statusCode).toBe(200);
-    expect(writes[0]).toMatchObject({ user_id: owner, source: "manual" });
+    expect(good.statusCode).toBe(405);
+    expect(writes).toHaveLength(0);
     const spoof = await app.inject({
       method: "POST",
       url: "/v1/moods",
@@ -304,8 +304,8 @@ describe("API authentication and ownership", () => {
         user_id: "other",
       },
     });
-    expect(spoof.statusCode).toBe(400);
-    expect(writes).toHaveLength(1);
+    expect(spoof.statusCode).toBe(405);
+    expect(writes).toHaveLength(0);
   });
   it("requires MFA for administrators and customers with enrolled MFA", async () => {
     for (const settings of [{ admin: true }, { mfa: true }]) {

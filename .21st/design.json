@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "project": {
+    "name": "nila",
+    "productType": "Private voice-driven wellness dashboard",
+    "stack": [
+      "Next.js 16",
+      "React 19",
+      "TypeScript",
+      "Tailwind CSS 4",
+      "Radix Dialog",
+      "Supabase"
+    ]
+  },
+  "sources": {
+    "tokens": ["apps/web/src/app/globals.css", "apps/web/src/app/wellness.css"],
+    "components": [
+      "apps/web/src/components/dashboard.tsx",
+      "apps/web/src/components/wellness-visuals.tsx",
+      "apps/web/src/components/wellness-cards.tsx",
+      "apps/web/src/components/ui.tsx"
+    ],
+    "assets": [],
+    "instructions": ["docs/nila/voice-first-redesign.md"]
+  },
+  "design": {
+    "colorMode": "light and dark",
+    "colors": {
+      "ink": "#292638",
+      "lavender": "#eee9f8",
+      "accent": "#655183",
+      "peach": "#f7e6dd",
+      "canvas": "#faf8f4",
+      "sage": "#e7ede5"
+    },
+    "typography": {
+      "display": "Georgia serif",
+      "body": "Self-hosted Manrope"
+    },
+    "spacing": {},
+    "radius": {},
+    "shadows": {},
+    "motion": {
+      "reduced": "Respects prefers-reduced-motion",
+      "style": "Subtle opacity and transform"
+    },
+    "density": "spacious"
+  },
+  "components": {
+    "installed": [],
+    "preferredPrimitives": ["Radix Dialog", "Semantic HTML", "Phosphor Icons"],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [
+      "One visual dashboard",
+      "Only approved owner-bound phone data",
+      "Missing data stays empty",
+      "Emoji text equivalents",
+      "Nightly schedule and clickable profile",
+      "Keyboard navigation and responsive layout"
+    ],
+    "avoid": [
+      "Manual wellness input",
+      "Website voice agent",
+      "Task completion actions",
+      "Invented values",
+      "Clinical diagnoses",
+      "Unapproved long-term memory"
+    ]
+  },
+  "decisions": [
+    "Adapt Dribbble mobile hierarchy into an original web layout",
+    "Keep verified stack and privacy boundaries",
+    "Use 21st deterministic review; catalog sign-in unavailable",
+    "User-requested emojis override minimalist-ui emoji ban"
+  ],
+  "evidence": [],
+  "generatedAt": "2026-10-13T09:55:41.101Z"
+}
