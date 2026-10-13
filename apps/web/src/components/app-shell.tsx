@@ -142,9 +142,9 @@ export function AppShell({
             )}
             {data && !data.profile.onboarding_complete && !preview && (
               <Notice>
-                Your space is ready for setup.{" "}
+                Start with mood tracking. Phone calls are optional.{" "}
                 <Link className="text-link" href="/onboarding">
-                  Finish connecting your check-ins
+                  Open your private space
                 </Link>
               </Notice>
             )}

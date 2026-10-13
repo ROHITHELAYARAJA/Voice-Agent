@@ -61,6 +61,10 @@ export const consentInput = z
     recording: z.literal(false),
   })
   .strict();
+export const onboardingInput = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("self_care"), adult: z.literal(true) }).strict(),
+  z.object({ mode: z.literal("voice") }).strict(),
+]);
 export const providerInput = z.discriminatedUnion("provider", [
   z
     .object({

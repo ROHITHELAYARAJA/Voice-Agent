@@ -39,12 +39,20 @@ async function fixture({
           ? { suspended }
           : table === "account_roles"
             ? [{ role: admin ? "admin" : "customer" }]
-            : {},
+            : [
+                  "consent_records",
+                  "provider_connections",
+                  "verified_phone_numbers",
+                ].includes(table)
+              ? []
+              : {},
       error: null,
     };
     const chain = {
       select: () => chain,
       eq: () => chain,
+      order: () => chain,
+      limit: () => chain,
       single: () => Promise.resolve(result),
       upsert: (body: unknown) => {
         writes.push(body);
@@ -55,6 +63,10 @@ async function fixture({
     };
     return chain;
   }
+  const transaction = {
+    query: vi.fn(async () => ({ rows: [], rowCount: 1 })),
+    release: vi.fn(),
+  };
   const db = {
     admin: {
       auth: {
@@ -77,13 +89,91 @@ async function fixture({
     pool: {
       end: vi.fn(),
       query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
+      connect: vi.fn(async () => transaction),
     },
   } as unknown as ReturnType<typeof database>;
   const app = await buildApi(env, db);
   apps.push(app);
-  return { app, writes, db };
+  return { app, writes, db, transaction };
 }
 describe("API authentication and ownership", () => {
+  it("opens self-care without providers or a phone and keeps calls disabled for the authenticated owner", async () => {
+    const { app, transaction } = await fixture();
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/onboarding/complete",
+      headers: { authorization: `Bearer ${token()}` },
+      payload: { mode: "self_care", adult: true },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ready: true, mode: "self_care" });
+    expect(fetch).not.toHaveBeenCalled();
+    const queries = transaction.query.mock.calls as unknown as [
+      string,
+      unknown[]?,
+    ][];
+    expect(queries[0]?.[0]).toBe("begin");
+    expect(queries.at(-1)?.[0]).toBe("commit");
+    for (const [sql, values] of queries.slice(1, -1)) {
+      expect(values).toEqual([owner]);
+      expect(sql).not.toContain("encrypted_credentials");
+    }
+    expect(
+      queries.some(([sql]) => sql.includes("true,false,false,false")),
+    ).toBe(true);
+    expect(queries.some(([sql]) => sql.includes("enabled=false"))).toBe(true);
+    expect(queries.some(([sql]) => sql.includes("status='canceled'"))).toBe(
+      true,
+    );
+    expect(
+      queries.some(([sql]) => sql.includes("onboarding_complete=true")),
+    ).toBe(true);
+    expect(transaction.release).toHaveBeenCalled();
+  });
+  it("requires adult confirmation and rejects another user's ID during self-care onboarding", async () => {
+    for (const payload of [
+      { mode: "self_care", adult: false },
+      { mode: "self_care" },
+      { mode: "self_care", adult: true, user_id: "other" },
+    ]) {
+      const { app, db } = await fixture();
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/onboarding/complete",
+        headers: { authorization: `Bearer ${token()}` },
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+      expect(db.pool.connect).not.toHaveBeenCalled();
+    }
+  });
+  it("rolls back failed self-care onboarding instead of reporting success", async () => {
+    const { app, transaction } = await fixture();
+    transaction.query.mockRejectedValueOnce(new Error("database unavailable"));
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/onboarding/complete",
+      headers: { authorization: `Bearer ${token()}` },
+      payload: { mode: "self_care", adult: true },
+    });
+    expect(response.statusCode).toBe(500);
+    expect(transaction.query).toHaveBeenLastCalledWith("rollback");
+    expect(transaction.release).toHaveBeenCalled();
+  });
+  it("keeps telephone calls gated after self-care access and rejects unsupported voice setup", async () => {
+    const { app, db } = await fixture();
+    for (const url of ["/v1/calls/test", "/v1/onboarding/complete"]) {
+      const response = await app.inject({
+        method: "POST",
+        url,
+        headers: { authorization: `Bearer ${token()}` },
+      });
+      expect(response.statusCode).toBe(409);
+    }
+    expect(db.pool.connect).not.toHaveBeenCalled();
+  });
   it("explains why a trial demo cannot connect Nila without saving unsupported credentials", async () => {
     const { app, db } = await fixture();
     const fetch = vi.fn(

@@ -1,5 +1,42 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+test("onboarding offers self-care without a phone or provider and keeps telephone setup optional", async ({
+  page,
+}) => {
+  await page.goto("/preview?view=onboarding");
+  await expect(
+    page.getByRole("heading", { name: "Start without phone calls" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Use mood tracking without calls" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Call me to verify", exact: true }),
+  ).not.toBeVisible();
+  await expect(
+    page.getByLabel("Deepgram API key", { exact: false }),
+  ).toBeVisible();
+  const phoneSetup = page.getByRole("button", {
+    name: "Set up optional phone calls",
+  });
+  await phoneSetup.click();
+  await expect(
+    page.getByRole("button", { name: "Phone & consent", exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Hide phone setup" }).click();
+  await expect(
+    page.getByRole("button", { name: "Phone & consent", exact: false }),
+  ).not.toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBeTruthy();
+  const result = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(result.violations).toEqual([]);
+});
 test("marketing preview, keyboard FAQ and reduced motion", async ({
   page,
 }, info) => {

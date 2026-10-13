@@ -19,6 +19,7 @@ import {
   consentInput,
   journalInput,
   moodInput,
+  onboardingInput,
   phoneInput,
   preferencesInput,
   providerInput,
@@ -740,6 +741,40 @@ export async function buildApi(env: Environment, db = database(env)) {
   });
   app.post("/v1/onboarding/complete", async (request) => {
     const { user } = identity(request);
+    const body = onboardingInput.parse(request.body ?? { mode: "voice" });
+    if (body.mode === "self_care") {
+      const client = await db.pool.connect();
+      try {
+        await client.query("begin");
+        await client.query(
+          "insert into public.consent_records(user_id,adult,recurring_calls,transcription,recording,policy_version) values($1,true,false,false,false,'2026-10-12')",
+          [user.id],
+        );
+        await client.query(
+          "update public.call_schedules set enabled=false,next_call_at_utc=null where user_id=$1",
+          [user.id],
+        );
+        await client.query(
+          "update public.call_jobs set status='canceled' where user_id=$1 and status in ('queued','claimed')",
+          [user.id],
+        );
+        await client.query(
+          "update public.profiles set onboarding_complete=true where user_id=$1",
+          [user.id],
+        );
+        await client.query(
+          "insert into public.audit_logs(user_id,actor_id,action) values($1,$1,'onboarding.self_care')",
+          [user.id],
+        );
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+      return { ready: true, mode: "self_care" };
+    }
     await eligibility(user.id);
     checked(
       await db.admin

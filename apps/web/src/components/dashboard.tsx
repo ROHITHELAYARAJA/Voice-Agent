@@ -13,10 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import { useProduct } from "./product-context";
 import { Empty, Notice, Skeleton, Field } from "./ui";
-import {
-  activities,
-  challengeActivity,
-} from "@nila/validation";
+import { activities, challengeActivity } from "@nila/validation";
 export function localDate(timezone = "Asia/Kolkata", date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
@@ -233,6 +230,16 @@ export function CallCard() {
     active = data.calls.find((c) =>
       ["initiated", "ringing", "in-progress", "sending"].includes(c.status),
     );
+  const phoneReady =
+    data.consent &&
+    data.phones.length > 0 &&
+    ["twilio", "deepgram", "elevenlabs"].every((provider) =>
+      data.connections.some(
+        (c) => c.provider === provider && c.status === "connected",
+      ),
+    ) &&
+    !!data.connections.find((c) => c.provider === "twilio")?.capabilities
+      .media_streams;
   async function call() {
     setBusy(true);
     setMessage("");
@@ -268,13 +275,22 @@ export function CallCard() {
           ? `Call status: ${active.status}`
           : schedule
             ? `Scheduled in ${schedule.timezone}`
-            : "Choose when a friendly check-in fits your day."}
+            : !preview && !phoneReady
+              ? "Mood tracking and journaling are ready. Telephone calls are optional and need separate setup."
+              : "Choose when a friendly check-in fits your day."}
       </p>
       <div className="button-row">
-        <Link className="button secondary" href={viewLink("schedule", preview)}>
-          Choose a time <ArrowUpRightIcon />
+        <Link
+          className="button secondary"
+          href={viewLink(
+            !preview && !phoneReady ? "onboarding" : "schedule",
+            preview,
+          )}
+        >
+          {!preview && !phoneReady ? "Set up optional calls" : "Choose a time"}{" "}
+          <ArrowUpRightIcon />
         </Link>
-        {!preview && (
+        {!preview && phoneReady && (
           <button
             className="button"
             onClick={() => void call()}

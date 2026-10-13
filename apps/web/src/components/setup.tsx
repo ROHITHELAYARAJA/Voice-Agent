@@ -8,7 +8,7 @@ import { Field, Notice } from "./ui";
 import { viewLink } from "./dashboard";
 export function ProviderSetup() {
   const { data, mutate, preview } = useProduct();
-  const [provider, setProvider] = useState("twilio"),
+  const [provider, setProvider] = useState("deepgram"),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [success, setSuccess] = useState("");
@@ -53,11 +53,12 @@ export function ProviderSetup() {
         <KeyIcon size={26} />
       </div>
       <p>
-        Nila uses your provider accounts. Their usage charges and limits still
-        apply.
+        Deepgram and ElevenLabs can be connected here. Mood tracking, written
+        journals and self-care work without provider keys. Twilio is optional
+        and only needed for telephone calls. Provider usage limits still apply.
       </p>
       <div className="provider-status">
-        {["twilio", "deepgram", "elevenlabs"].map((name) => {
+        {["deepgram", "elevenlabs", "twilio"].map((name) => {
           const connection = data?.connections.find((c) => c.provider === name);
           return (
             <div className="list-row" key={name}>
@@ -67,7 +68,7 @@ export function ProviderSetup() {
                     ? "ElevenLabs"
                     : name === "deepgram"
                       ? "Deepgram"
-                      : "Twilio"}
+                      : "Twilio · optional calls"}
                 </strong>
                 <p className="caption">
                   {connection?.label ?? "Not connected"}
@@ -89,7 +90,7 @@ export function ProviderSetup() {
         })}
       </div>
       <div className="segmented" role="group" aria-label="Provider to connect">
-        {["twilio", "deepgram", "elevenlabs"].map((name) => (
+        {["deepgram", "elevenlabs", "twilio"].map((name) => (
           <button
             aria-pressed={provider === name}
             key={name}
@@ -103,7 +104,7 @@ export function ProviderSetup() {
               ? "ElevenLabs"
               : name === "deepgram"
                 ? "Deepgram"
-                : "Twilio"}
+                : "Twilio · optional"}
           </button>
         ))}
       </div>
@@ -554,11 +555,12 @@ export function ScheduleForm() {
   );
 }
 export function OnboardingView() {
-  const { data } = useProduct();
+  const { data, mutate, preview } = useProduct();
   const [step, setStep] = useState(0),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const { mutate } = useProduct();
+    [busy, setBusy] = useState(false),
+    [adult, setAdult] = useState(false),
+    [phoneSetup, setPhoneSetup] = useState(false);
   const router = useRouter();
   const steps = [
     "Connect providers",
@@ -566,10 +568,14 @@ export function OnboardingView() {
     "Voice preferences",
     "Choose your time",
   ];
-  async function finish() {
+  async function finish(mode: "voice" | "self_care" = "voice") {
     setBusy(true);
+    setError("");
     try {
-      await mutate("/onboarding/complete");
+      await mutate(
+        "/onboarding/complete",
+        mode === "self_care" ? { mode, adult } : { mode },
+      );
       router.push("/dashboard");
     } catch (e) {
       setError((e as Error).message);
@@ -583,55 +589,105 @@ export function OnboardingView() {
         <div>
           <span className="eyebrow">WELCOME TO YOUR LITTLE SPACE</span>
           <h1>Let's make this yours.</h1>
-          <p>Four thoughtful steps. You stay in control throughout.</p>
+          <p>
+            Start with your mood and a little reflection. Phone calls are
+            optional.
+          </p>
         </div>
       </div>
-      <ol className="setup-steps">
-        {steps.map((name, i) => (
-          <li key={name}>
-            <button
-              aria-current={step === i ? "step" : undefined}
-              onClick={() => setStep(i)}
-            >
-              <span>{i + 1}</span>
-              {name}
-            </button>
-          </li>
-        ))}
-      </ol>
-      {step === 0 ? (
-        <ProviderSetup />
-      ) : step === 1 ? (
-        <PhoneConsentSetup />
-      ) : step === 2 ? (
-        <PreferencesForm />
-      ) : (
-        <ScheduleForm />
-      )}
-      {error && <Notice error>{error}</Notice>}
+      <section className="card">
+        <span className="eyebrow">YOUR SPACE, AT YOUR PACE</span>
+        <h2>Start without phone calls</h2>
+        <p>
+          Track your mood, write private journals and try self-care activities.
+          No Twilio account, phone number or upgrade is required for these
+          features.
+        </p>
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={adult}
+            disabled={busy || preview}
+            onChange={(e) => setAdult(e.target.checked)}
+          />
+          I am 18 or older.
+        </label>
+        <button
+          className="button"
+          disabled={busy || preview || !adult}
+          onClick={() => void finish("self_care")}
+        >
+          {busy ? "Opening your space…" : "Use mood tracking without calls"}
+        </button>
+        <p className="caption">
+          Calls and speech processing stay off. Your connected provider keys
+          remain encrypted and can be managed in Settings.
+        </p>
+      </section>
       <div className="button-row setup-navigation">
-        {step > 0 && (
-          <button
-            className="button secondary"
-            onClick={() => setStep(step - 1)}
-          >
-            Back
-          </button>
-        )}
-        {step < 3 ? (
-          <button className="button" onClick={() => setStep(step + 1)}>
-            Continue
-          </button>
-        ) : (
-          <button
-            className="button"
-            disabled={busy || !data?.consent}
-            onClick={() => void finish()}
-          >
-            {busy ? "Checking setup…" : "Open my private space"}
-          </button>
+        <button
+          className="text-button"
+          aria-expanded={phoneSetup}
+          aria-controls="phone-onboarding"
+          onClick={() => setPhoneSetup(!phoneSetup)}
+        >
+          {phoneSetup ? "Hide phone setup" : "Set up optional phone calls"}
+        </button>
+      </div>
+      {!phoneSetup && <ProviderSetup />}
+      <div id="phone-onboarding" hidden={!phoneSetup}>
+        {phoneSetup && (
+          <>
+            <ol className="setup-steps">
+              {steps.map((name, i) => (
+                <li key={name}>
+                  <button
+                    aria-current={step === i ? "step" : undefined}
+                    onClick={() => setStep(i)}
+                  >
+                    <span>{i + 1}</span>
+                    {name}
+                  </button>
+                </li>
+              ))}
+            </ol>
+            {step === 0 ? (
+              <ProviderSetup />
+            ) : step === 1 ? (
+              <PhoneConsentSetup />
+            ) : step === 2 ? (
+              <PreferencesForm />
+            ) : (
+              <ScheduleForm />
+            )}
+            {error && <Notice error>{error}</Notice>}
+            <div className="button-row setup-navigation">
+              {step > 0 && (
+                <button
+                  className="button secondary"
+                  onClick={() => setStep(step - 1)}
+                >
+                  Back
+                </button>
+              )}
+              {step < 3 ? (
+                <button className="button" onClick={() => setStep(step + 1)}>
+                  Continue
+                </button>
+              ) : (
+                <button
+                  className="button"
+                  disabled={busy || preview || !data?.consent}
+                  onClick={() => void finish()}
+                >
+                  {busy ? "Checking setup…" : "Open my private space"}
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
+      {error && !phoneSetup && <Notice error>{error}</Notice>}
     </>
   );
 }

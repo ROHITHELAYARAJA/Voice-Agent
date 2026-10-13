@@ -30,7 +30,7 @@ const faqs = [
   ],
   [
     "What do I need to get started?",
-    "Create an account and connect your own Twilio, Deepgram and ElevenLabs provider accounts. Provider charges and hosting availability are separate from Nila. Media Streams requires a supported Twilio account.",
+    "Create an account to track moods, write private journals and use self-care activities. No Twilio account or upgrade is required for these features. You can connect Deepgram and ElevenLabs optionally. Telephone calls require separate provider setup and a supported Twilio account; provider charges and limits apply.",
   ],
   [
     "Which languages can I use?",
