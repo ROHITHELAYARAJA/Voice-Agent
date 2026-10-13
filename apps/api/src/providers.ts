@@ -18,6 +18,8 @@ export function providerVerificationMessage(
       : `${name} rejected the API key. Check that the key is current and try again.`;
   if (code === "PROVIDER_HTTP_403")
     return `${name} denied access. Check this key's permissions and the account's restrictions.`;
+  if (code === "TRIAL_MEDIA_STREAMS_UNAVAILABLE")
+    return "Twilio accepted your credentials, but this is a trial account. Its sample calls use a Twilio demo; trial accounts block Media Streams, which Nila needs for Deepgram and ElevenLabs. Nila telephone calls require an upgraded account with a voice-enabled caller number.";
   if (code === "CALLER_NUMBER_NOT_AUTHORIZED")
     return "Twilio accepted your credentials, but the caller number does not belong to this account. Use a number from Phone Numbers > Active numbers in the same account as your SID.";
   if (code === "CALLER_NUMBER_NOT_VOICE_ENABLED")
@@ -64,6 +66,8 @@ export async function validateProvider(value: Credentials) {
       twilioHeaders(value),
     );
     if (result.status !== "active") throw new Error("ACCOUNT_NOT_ACTIVE");
+    if (result.type === "Trial")
+      throw new Error("TRIAL_MEDIA_STREAMS_UNAVAILABLE");
     const numbers = await providerRequest(
       `https://api.twilio.com/2010-04-01/Accounts/${value.account_sid}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(value.caller_number)}`,
       twilioHeaders(value),

@@ -10,7 +10,18 @@ const twilio = {
   caller_number: "+14155550100",
 };
 afterEach(() => vi.unstubAllGlobals());
-it("checks the customer's caller number and flags Trial streaming limits", async () => {
+it("explains trial streaming restrictions before checking ownership of a demo number", async () => {
+  const fetch = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ type: "Trial", status: "active" })),
+  );
+  vi.stubGlobal("fetch", fetch);
+  await expect(validateProvider(twilio)).rejects.toThrow(
+    "TRIAL_MEDIA_STREAMS_UNAVAILABLE",
+  );
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+it("accepts an upgraded account with an owned voice-enabled caller number", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(
@@ -26,14 +37,15 @@ it("checks the customer's caller number and flags Trial streaming limits", async
                     },
                   ],
                 }
-              : { type: "Trial", status: "active" },
+              : { type: "Full", status: "active" },
           ),
           { status: 200 },
         ),
     ),
   );
   expect((await validateProvider(twilio)).capabilities).toMatchObject({
-    media_streams: false,
+    media_streams: true,
+    account_type: "Full",
   });
 });
 it("rejects an unowned caller number and revoked keys", async () => {
@@ -97,6 +109,12 @@ it("stops validation before loading numbers for an inactive account", async () =
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 it("shows safe, actionable errors without returning provider response details", () => {
+  expect(
+    providerVerificationMessage(
+      new Error("TRIAL_MEDIA_STREAMS_UNAVAILABLE"),
+      "twilio",
+    ),
+  ).toContain("trial accounts block Media Streams");
   expect(
     providerVerificationMessage(new Error("PROVIDER_HTTP_401"), "twilio"),
   ).toContain("Account SID and auth token");

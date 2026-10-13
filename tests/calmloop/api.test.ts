@@ -84,6 +84,32 @@ async function fixture({
   return { app, writes, db };
 }
 describe("API authentication and ownership", () => {
+  it("explains why a trial demo cannot connect Nila without saving unsupported credentials", async () => {
+    const { app, db } = await fixture();
+    const fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: "active", type: "Trial" })),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/providers",
+      headers: { authorization: `Bearer ${token()}` },
+      payload: {
+        provider: "twilio",
+        account_sid: "AC" + "a".repeat(32),
+        auth_token: "private-token".repeat(3),
+        caller_number: "+14155550100",
+      },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error).toContain(
+      "trial accounts block Media Streams",
+    );
+    expect(response.body).not.toContain("private-token");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(db.pool.query).toHaveBeenCalledTimes(1);
+  });
   it("explains rejected caller ownership without saving credentials or returning secrets", async () => {
     const { app, db } = await fixture();
     vi.stubGlobal(
