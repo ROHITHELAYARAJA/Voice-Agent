@@ -8,59 +8,7 @@ import {
   ListIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
-import { Button, Modal, ThemeToggle } from "./ui";
-export function VoicePreview() {
-  const [step, setStep] = useState(0);
-  const lines = [
-    "Hey, I'm your Nila companion. How has today felt for you?",
-    "A little busy, but a walk outside helped me slow down.",
-    "I'm glad you found a little breathing room. Want to tell me about that moment?",
-  ];
-  return (
-    <div className="voice-preview">
-      <div className="row between">
-        <div className="row">
-          <div className="voice-orb">
-            <WaveformIcon size={36} weight="duotone" />
-          </div>
-          <div>
-            <strong>Your gentle check-in</strong>
-            <p className="muted small">Illustrative conversation</p>
-          </div>
-        </div>
-        <span className="badge">AI companion</span>
-      </div>
-      <blockquote aria-live="polite">“{lines[step]}”</blockquote>
-      <div className="row between">
-        <div className={`wave ${step > 0 ? "playing" : ""}`} aria-hidden="true">
-          {Array.from({ length: 19 }, (_, i) => (
-            <span
-              key={i}
-              style={
-                {
-                  "--bar": `${10 + ((i * 13) % 29)}px`,
-                  "--i": i,
-                } as React.CSSProperties
-              }
-            />
-          ))}
-        </div>
-        <Button
-          className="secondary"
-          onClick={() => setStep((step + 1) % lines.length)}
-        >
-          {step === 0
-            ? "Try the preview"
-            : step === 2
-              ? "Start again"
-              : "Next response"}
-          <ArrowRightIcon size={15} />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
+import { Modal, ThemeToggle } from "./ui";
 export function MarketingFAQ({ faqs }: { faqs: string[][] }) {
   return (
     <Accordion.Root type="single" collapsible className="faq">

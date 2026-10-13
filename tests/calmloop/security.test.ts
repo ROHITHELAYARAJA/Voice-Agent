@@ -100,6 +100,7 @@ describe("supported reflections", () => {
     ],
     mood_score: null,
     mood_evidence: "",
+    wellness: [],
     user_turns: ["Work felt stressful today"],
     summary_approved: true as const,
     generation: 1,

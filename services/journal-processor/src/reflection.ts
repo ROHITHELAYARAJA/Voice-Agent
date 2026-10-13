@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  wellnessObservation,
+  validateWellness,
+} from "../../../packages/validation/src/wellness.ts";
 export const reflectionInput = z
   .object({
     statements: z
@@ -18,9 +22,14 @@ export const reflectionInput = z
     user_turns: z.array(z.string().max(4000)).max(100),
     summary_approved: z.literal(true),
     generation: z.number().int().nonnegative(),
+    wellness: z.array(wellnessObservation).max(32).default([]),
   })
   .strict();
 export function validatedReflection(input: z.infer<typeof reflectionInput>) {
+  validateWellness(input.wellness, input.user_turns);
+  const wellnessMood = input.wellness.find((o) => o.topic === "mood");
+  if (wellnessMood && wellnessMood.value !== input.mood_score)
+    throw new Error("Conflicting mood values");
   const said = input.user_turns.join("\n");
   for (const item of input.statements) {
     if (!said.includes(item.quote)) throw new Error("Unsupported statement");
@@ -51,7 +60,7 @@ export function validatedReflection(input: z.infer<typeof reflectionInput>) {
     throw new Error("Unsupported mood score");
   const unique = [...new Set(input.statements.map((s) => s.quote))];
   return {
-    title: "A little space for your day",
+    title: "Your nightly snapshot",
     reflection:
       "Your words from this check-in:\n\n" +
       unique.map((s) => `“${s}”`).join("\n\n"),

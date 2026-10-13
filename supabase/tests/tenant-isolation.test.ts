@@ -19,6 +19,12 @@ beforeAll(async () => {
       "utf8",
     ),
   );
+  await db.exec(
+    await readFile(
+      new URL("../migrations/202610130001_voice_wellness.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   await db.query("insert into auth.users(id) values($1),($2)", [alice, bob]);
 });
 afterAll(async () => db.close());
@@ -39,13 +45,22 @@ describe("Postgres tenant policies and queue", () => {
     );
     expect(roles.rows).toEqual([{ role: "customer" }]);
   });
-  it("allows own manual moods but never another customer's writes or reads", async () => {
-    await asUser(alice, () =>
-      db.query(
-        "insert into public.mood_entries(user_id,entry_date,score,source) values($1,'2026-10-12',7,'manual')",
-        [alice],
-      ),
+  it("allows server-saved moods but rejects manual input and other tenant access", async () => {
+    await db.query(
+      "insert into public.mood_entries(user_id,entry_date,score,source) values($1,'2026-10-12',7,'manual')",
+      [alice],
     );
+    await asUser(alice, async () => {
+      await expect(
+        db.query(
+          "insert into public.mood_entries(user_id,entry_date,score,source) values($1,'2026-10-14',8,'manual')",
+          [alice],
+        ),
+      ).rejects.toThrow();
+      expect(
+        (await db.query("select * from public.mood_entries")).rows,
+      ).toHaveLength(1);
+    });
     await asUser(bob, async () => {
       expect(
         (await db.query("select * from public.mood_entries")).rows,
@@ -86,7 +101,7 @@ describe("Postgres tenant policies and queue", () => {
       ).rejects.toThrow();
     });
   });
-  it("permits journal correction without altering voice attribution", async () => {
+  it("rejects browser editing of voice summaries and prevents another owner's deletion", async () => {
     const journal = (
       await db.query<{ id: string }>(
         "insert into public.journal_entries(user_id,entry_date,title,reflection,source) values($1,'2026-10-12','My day','My own words','voice') returning id",
@@ -94,10 +109,12 @@ describe("Postgres tenant policies and queue", () => {
       )
     ).rows[0]!;
     await asUser(alice, async () => {
-      await db.query(
-        "update public.journal_entries set user_edit='A correction' where id=$1",
-        [journal.id],
-      );
+      await expect(
+        db.query(
+          "update public.journal_entries set user_edit='A correction' where id=$1",
+          [journal.id],
+        ),
+      ).rejects.toThrow();
       await expect(
         db.query(
           "update public.journal_entries set reflection='Invented' where id=$1",
@@ -173,6 +190,52 @@ describe("Postgres tenant policies and queue", () => {
         )
       ).rows[0]?.status,
     ).toBe("uncertain");
+  });
+  it("isolates approved memories and prevents client creation", async () => {
+    const journal = (
+      await db.query<{ id: string }>(
+        "insert into public.journal_entries(user_id,entry_date,title,reflection,source) values($1,'2026-10-13','Private','My words','voice') returning id",
+        [alice],
+      )
+    ).rows[0]!;
+    const memory = (
+      await db.query<{ id: string }>(
+        "insert into public.voice_memories(user_id,journal_id,value,quote,permission_quote) values($1,$2,'quiet walks','I like quiet walks','Yes, remember this') returning id",
+        [alice, journal.id],
+      )
+    ).rows[0]!;
+    await asUser(bob, async () => {
+      expect(
+        (await db.query("select * from public.voice_memories")).rows,
+      ).toHaveLength(0);
+      expect(
+        (
+          await db.query(
+            "delete from public.voice_memories where id=$1 returning id",
+            [memory.id],
+          )
+        ).rows,
+      ).toHaveLength(0);
+    });
+    await asUser(alice, async () => {
+      expect(
+        (await db.query("select * from public.voice_memories")).rows,
+      ).toHaveLength(1);
+      await expect(
+        db.query(
+          "insert into public.voice_memories(user_id,journal_id,value,quote,permission_quote) values($1,$2,'fake','fake','fake')",
+          [alice, journal.id],
+        ),
+      ).rejects.toThrow();
+      expect(
+        (
+          await db.query(
+            "delete from public.voice_memories where id=$1 returning id",
+            [memory.id],
+          )
+        ).rows,
+      ).toHaveLength(1);
+    });
   });
   it("suspension removes private read access", async () => {
     await db.query(

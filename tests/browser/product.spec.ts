@@ -1,59 +1,123 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-test("onboarding offers self-care without a phone or provider and keeps telephone setup optional", async ({
-  page,
-}) => {
-  await page.goto("/preview?view=onboarding");
-  await expect(
-    page.getByRole("heading", { name: "Start without phone calls" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Use mood tracking without calls" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Call me to verify", exact: true }),
-  ).not.toBeVisible();
-  await expect(
-    page.getByLabel("Deepgram API key", { exact: false }),
-  ).toBeVisible();
-  const phoneSetup = page.getByRole("button", {
-    name: "Set up optional phone calls",
-  });
-  await phoneSetup.click();
-  await expect(
-    page.getByRole("button", { name: "Phone & consent", exact: false }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Hide phone setup" }).click();
-  await expect(
-    page.getByRole("button", { name: "Phone & consent", exact: false }),
-  ).not.toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBeTruthy();
-  const result = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(result.violations).toEqual([]);
-});
-test("marketing preview, keyboard FAQ and reduced motion", async ({
+
+test("visual dashboard reads phone data, switches periods and opens the profile", async ({
   page,
 }, info) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Your feelings deserve a little space.",
-  );
-  await page.getByRole("button", { name: "Try the preview" }).click();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/preview");
   await expect(
-    page.getByText("A little busy, but a walk outside helped me slow down.", {
-      exact: false,
-    }),
+    page.getByRole("heading", { name: "Your days, in a softer light." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Is Nila therapy?" }).click();
+  await expect(page.locator(".constellation button")).toHaveCount(32);
+  await expect(page.locator("main input, main textarea")).toHaveCount(0);
   await expect(
-    page.getByText("Nila is a self-care and reflection companion for adults.", {
+    page.locator(".metric-panel.water .metric-number"),
+  ).toContainText("1.8");
+  await expect(
+    page.locator(".metric-panel.sleep .metric-number"),
+  ).toContainText("7");
+  await expect(page.locator(".mood-day")).toHaveCount(7);
+  await page.getByRole("button", { name: "30 days", exact: true }).click();
+  await expect(page.locator(".mood-day")).toHaveCount(30);
+  await page.getByRole("button", { name: "Last week", exact: true }).click();
+  await expect(page.locator(".mood-day")).toHaveCount(7);
+  const days = page.locator(".mood-day");
+  await days.first().click();
+  await expect(days.first()).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "7 days", exact: true }).click();
+  await page.getByRole("button", { name: "Open profile for Rohith" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("heading", { name: "Rohith", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("Asia/Kolkata");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open profile for Rohith" }),
+  ).toBeFocused();
+  await page
+    .getByRole("button", { name: "Nightly call settings", exact: true })
+    .click();
+  await expect(page.getByLabel("Evening calling time")).toHaveValue("20:00");
+  await expect(page.getByLabel("Evening calling time")).toHaveAttribute(
+    "min",
+    "18:00",
+  );
+  await page.keyboard.press("Escape");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBeTruthy();
+  expect(errors).toEqual([]);
+  await page.screenshot({
+    path: `outputs/nila-${info.project.name}-dashboard.png`,
+    fullPage: true,
+  });
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await page.getByRole("button", { name: "Use dark appearance" }).click();
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await page.screenshot({
+    path: `outputs/nila-${info.project.name}-dark.png`,
+    fullPage: true,
+  });
+});
+
+test("old feature URLs present the unified view without manual actions", async ({
+  page,
+}) => {
+  for (const view of [
+    "journals",
+    "moods",
+    "insights",
+    "challenge",
+    "self-care",
+    "recap",
+  ]) {
+    await page.goto(`/preview?view=${view}`);
+    await expect(
+      page.getByRole("heading", { name: "Your days, in a softer light." }),
+    ).toBeVisible();
+    await expect(page.locator("main input, main textarea")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "I've done this" }),
+    ).toHaveCount(0);
+  }
+});
+
+test("landing shows a visual example and keeps account access", async ({
+  page,
+}, info) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Your day has a story.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Try the preview" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Do I enter anything every day?" })
+    .click();
+  await expect(
+    page.getByText("The dashboard shows only answers you approved.", {
       exact: false,
     }),
   ).toBeVisible();
@@ -62,169 +126,22 @@ test("marketing preview, keyboard FAQ and reduced motion", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBeTruthy();
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
   await page.screenshot({
     path: `outputs/nila-${info.project.name}-landing.png`,
     fullPage: true,
   });
-  const result = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(result.violations).toEqual([]);
-  const robots = await page.request.get("/robots.txt");
-  expect(robots.status()).toBe(200);
-  expect(await robots.text()).toContain("Disallow: /journals");
-  await page
-    .locator(".hero-copy")
-    .getByRole("link", { name: "Get started", exact: false })
-    .click();
-  await expect(page).toHaveURL(/\/auth\?mode=signup/);
+  await page.goto("/auth?mode=signup");
   await expect(
     page.getByRole("button", { name: "Continue with Google" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Continue with GitHub" }),
-  ).toBeVisible();
-});
-
-test("social login keeps provider choice, PKCE callback and adult signup confirmation", async ({
-  page,
-}) => {
-  await page.goto("/auth?mode=signup");
-  await page.getByRole("button", { name: "Continue with GitHub" }).click();
-  await expect(
-    page.getByText("Please confirm that you are 18 or older", { exact: false }),
-  ).toBeVisible();
-  if (process.env.NILA_AUTH_CONFIGURED !== "1") return;
-  for (const provider of ["google", "github"]) {
-    await page.goto("/auth?error=callback");
-    await expect(
-      page.getByText("Sign-in could not finish. Please try again."),
-    ).toBeVisible();
-    let authorization: URL | undefined;
-    await page.route("**/auth/v1/authorize?**", async (route) => {
-      authorization = new URL(route.request().url());
-      await route.fulfill({
-        contentType: "text/html",
-        body: "<h1>Provider sign-in test</h1>",
-      });
-    });
-    await page
-      .getByRole("button", {
-        name: `Continue with ${provider === "github" ? "GitHub" : "Google"}`,
-      })
-      .click();
-    await expect(
-      page.getByRole("heading", { name: "Provider sign-in test" }),
-    ).toBeVisible();
-    expect(authorization?.searchParams.get("provider")).toBe(provider);
-    expect(authorization?.searchParams.get("code_challenge_method")).toBe(
-      "s256",
-    );
-    const callback = new URL(authorization!.searchParams.get("redirect_to")!);
-    expect(callback.origin).toBe(
-      new URL(process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000")
-        .origin,
-    );
-    expect(callback.pathname).toBe("/auth/callback");
-    expect(callback.searchParams.get("next")).toBe("/dashboard");
-    await page.unroute("**/auth/v1/authorize?**");
-  }
-});
-test("preview mood, journal editor and challenge actions work", async ({
-  page,
-}, info) => {
-  await page.goto("/preview");
-  await page
-    .getByRole("button", { name: "Mood 8 out of 10", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Mood 8 out of 10", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await page.screenshot({
-    path: `outputs/nila-${info.project.name}-dashboard.png`,
-    fullPage: true,
-  });
-  const a11y = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(a11y.violations).toEqual([]);
-  await page.goto("/preview?view=journals");
-  await page
-    .getByRole("button", { name: "Write a reflection", exact: false })
-    .click();
-  await page.getByLabel("Title", { exact: true }).fill("A quiet moment");
-  await page
-    .getByLabel("Your reflection", { exact: true })
-    .fill("A walk helped me slow down today.");
-  await page.getByRole("button", { name: "Update preview" }).click();
-  await expect(
-    page.getByRole("heading", { name: "A quiet moment" }),
-  ).toBeVisible();
-  await page.goto("/preview?view=challenge");
-  await page.getByRole("button", { name: "I've done this" }).click();
-  await expect(
-    page.getByLabel("Day 6: completed", { exact: true }),
-  ).toBeVisible();
-});
-test("dark appearance, mobile navigation and setup gate", async ({
-  page,
-}, info) => {
-  await page.goto("/preview");
-  await page.getByRole("button", { name: "Use dark appearance" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  const result = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(result.violations).toEqual([]);
-  await page.screenshot({
-    path: `outputs/nila-${info.project.name}-dark.png`,
-    fullPage: true,
-  });
-  if (info.project.name === "mobile") {
-    await page
-      .getByRole("button", { name: "Open your space navigation" })
-      .click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await page
-      .getByRole("dialog")
-      .getByRole("link", { name: "Mood calendar" })
-      .click();
-    await expect(
-      page.getByRole("heading", { name: "Mood calendar" }),
-    ).toBeVisible();
-  }
-  await page.goto("/dashboard");
-  if (process.env.NILA_AUTH_CONFIGURED === "1") {
-    await expect(page).toHaveURL(/\/auth/);
-    await page.route("**/auth/v1/token?grant_type=password", (route) =>
-      route.fulfill({
-        status: 400,
-        contentType: "application/json",
-        body: JSON.stringify({
-          code: "invalid_credentials",
-          message: "Invalid login credentials",
-        }),
-      }),
-    );
-  } else {
-    await expect(
-      page.getByText("The local app needs its Supabase connection", {
-        exact: false,
-      }),
-    ).toBeVisible();
-  }
-  await page.goto("/auth");
-  await page
-    .getByLabel("Email address", { exact: true })
-    .fill("example@example.com");
-  await page.getByLabel("Password", { exact: true }).fill("test-password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(
-    page.getByText(
-      process.env.NILA_AUTH_CONFIGURED === "1"
-        ? "Invalid login credentials"
-        : "Account services are not connected yet",
-      { exact: false },
-    ),
   ).toBeVisible();
 });

@@ -19,6 +19,7 @@ export type Mood = {
   source: "manual" | "voice";
 };
 export type Journal = {
+  wellness?: import("../../validation/src/wellness.ts").WellnessObservation[];
   statements?: {
     kind: "reflection" | "positive" | "intention" | "stress";
     quote: string;
@@ -56,11 +57,13 @@ export type Schedule = {
 };
 export type Dashboard = {
   profile: {
+    email?: string;
     display_name: string;
     timezone: string;
     onboarding_complete: boolean;
   };
   moods: Mood[];
+  memories?: { id: string; value: string; quote: string; created_at: string }[];
   journals: Journal[];
   calls: Call[];
   connections: Connection[];

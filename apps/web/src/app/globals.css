@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./wellness.css";
 @theme inline {
   --font-sans: var(--font-manrope), sans-serif;
   --color-background: var(--canvas);

@@ -1,4 +1,11 @@
 import { z } from "zod";
+export {
+  wellnessObservation,
+  wellnessTopics,
+  validateWellness,
+  metricRules,
+} from "./wellness.ts";
+export type { WellnessObservation } from "./wellness.ts";
 export const supportedLanguages = [
   "auto",
   "en",
@@ -24,7 +31,12 @@ export const journalInput = z
   .strict();
 export const scheduleInput = z
   .object({
-    local_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    local_time: z
+      .string()
+      .regex(
+        /^(18|19|2[0-3]):[0-5]\d$/,
+        "Choose an evening time between 18:00 and 23:59",
+      ),
     timezone: z
       .string()
       .max(80)
