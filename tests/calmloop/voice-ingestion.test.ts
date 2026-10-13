@@ -85,6 +85,30 @@ describe("tenant-bound voice JSON ingestion", () => {
     });
     expect(writes.at(-1)?.[0]).toBe("commit");
   });
+  it("stores confirmed 5 L under the call owner without scaling", async () => {
+    const { app, query } = await fixture();
+    const waterQuote = "Today, I have drunk 5 L of water.";
+    const response = await app.inject({
+      method: "POST",
+      url: `/internal/voice/${session}/reflection`,
+      headers: { authorization: `Bearer ${env.INTERNAL_SERVICE_SECRET}` },
+      payload: {
+        ...payload,
+        statements: [{ kind: "reflection", quote: waterQuote }],
+        user_turns: ["yes", waterQuote, "yes"],
+        wellness: [{ topic: "water", value: 5, unit: "L", quote: waterQuote }],
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const writes = query.mock.calls as unknown as [string, unknown[]][];
+    const journal = writes.find(([sql]) =>
+      sql.startsWith("insert into public.journal_entries"),
+    )!;
+    expect(journal[1][0]).toBe(owner);
+    expect(JSON.parse(journal[1][7] as string)).toEqual([
+      { topic: "water", value: 5, unit: "L", quote: waterQuote },
+    ]);
+  });
   it.each([
     [1, true],
     [2, false],

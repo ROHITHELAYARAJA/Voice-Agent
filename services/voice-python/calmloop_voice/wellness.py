@@ -97,7 +97,11 @@ def validate_observations(observations, turns):
                 for topic, other in METRICS.items()
             ) or re.search(r"\b(no|not|didn't|wasn't|never)\b|இல்லை|இல்ல|नहीं", item.quote, re.I):
                 raise ValueError("Clarify one affirmative metric at a time")
-            if re.search(r"\b(or|maybe|not sure)\b|அல்லது|தெரியவில்லை", item.quote, re.I):
+            if re.search(
+                r"\b(or|maybe|not sure|tomorrow|plan|will|might|want to|going to)\b|அல்லது|தெரியவில்லை|நாளை|(?<!\d)-\s*\d",
+                item.quote,
+                re.I,
+            ):
                 raise ValueError("Uncertain value needs clarification")
             unit, _, _, terms = rule
             numbers = [
@@ -110,7 +114,7 @@ def validate_observations(observations, turns):
             ):
                 raise ValueError("Explicit hours required")
             if unit == "L" and not re.search(
-                r"lit(er|re)|லிட்டர்|लीटर|litro|liter", item.quote, re.I
+                r"\bL\b|lit(er|re)|லிட்டர்|लीटर|litro|liter", item.quote, re.I
             ):
                 raise ValueError("Explicit liters required")
         elif item.value.lower() not in item.quote.lower():

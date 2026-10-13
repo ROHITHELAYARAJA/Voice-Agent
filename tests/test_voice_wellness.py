@@ -62,3 +62,36 @@ def test_topic_rotation_is_bounded_and_changes_each_day():
     assert len(set(first)) == 8
     assert first[:3] == ["mood", "water", "sleep"]
     assert first[3:] != second[3:]
+
+
+def test_water_abbreviation_survives_review_and_confirmed_json():
+    state = Conversation()
+    state.remember("yes")
+    state.confirm_permission("yes")
+    quote = "Today, I have drunk 5 L of water."
+    state.remember(quote)
+    state.prepare(
+        {
+            "statements": [{"kind": "reflection", "quote": quote}],
+            "wellness": [{"topic": "water", "value": 5, "unit": "L", "quote": quote}],
+        }
+    )
+    state.acknowledge(state.playback_mark())
+    state.remember("yes")
+    assert state.reflection("yes")["wellness"] == [
+        {"topic": "water", "value": 5, "unit": "L", "quote": quote}
+    ]
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "I will drink 5 L of water tomorrow.",
+        "I drank -5 L of water.",
+        "I drank maybe 5 L of water.",
+    ],
+)
+def test_water_plans_and_uncertain_values_are_not_reported_intake(quote):
+    item = Observation(topic="water", value=5, unit="L", quote=quote)
+    with pytest.raises(ValueError):
+        validate_observations([item], [quote])

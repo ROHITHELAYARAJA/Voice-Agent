@@ -142,7 +142,11 @@ export function validateWellness(
         )
       )
         throw new Error("Clarify one affirmative metric at a time");
-      if (/\b(or|maybe|not sure)\b|அல்லது|தெரியவில்லை/i.test(observation.quote))
+      if (
+        /\b(or|maybe|not sure|tomorrow|plan|will|might|want to|going to)\b|அல்லது|தெரியவில்லை|நாளை|(?<!\d)-\s*\d/i.test(
+          observation.quote,
+        )
+      )
         throw new Error("Uncertain value needs clarification");
       const numbers =
         observation.quote
@@ -162,7 +166,7 @@ export function validateWellness(
         throw new Error("Explicit hours required");
       if (
         rule.unit === "L" &&
-        !/lit(er|re)|லிட்டர்|लीटर|litro|liter/i.test(observation.quote)
+        !/\bL\b|lit(er|re)|லிட்டர்|लीटर|litro|liter/i.test(observation.quote)
       )
         throw new Error("Explicit liters required");
     } else if (

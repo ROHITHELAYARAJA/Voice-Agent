@@ -54,3 +54,9 @@ The 32 topics are represented in the visual dashboard and approved structured ca
 Automated verification covers tenant-bound JSON ingestion, stale speech generations, exact supporting quotes, numeric topic/unit matching, separate memory permission, Postgres RLS, owner-private Realtime subscription, keyboard focus, desktop/mobile layouts and light/dark accessibility. Preview values are explicitly illustrative; real accounts have no seeded wellness data. Production migration, deployed Realtime delivery and a new real telephone check-in are pending approval and cannot be claimed as verified by these tests.
 
 Deploy in this order after approval: apply `202610130001_voice_wellness.sql` to the chosen Supabase environment, release the API and voice services, then release the website. Keep the prior voice deployment available for rollback. Test with an explicitly authorized user before enabling nightly schedules. The additive migration retains historic data but intentionally revokes customer-side wellness creation and editing; deletion and configuration remain available.
+
+## Approved October 13 repair
+
+Both validators now accept explicit L alongside liters. A spoken, reviewed and approved "Today, I have drunk 5 L of water" is emitted as topic water, value 5, unit L and its exact quote. The call session supplies the owner; client-supplied owner IDs remain rejected. Planned, uncertain or negative quantities need clarification. The prompt keeps readbacks short and does not add a second model or API key.
+
+Verified locally: 39 Python checks across voice wellness, phone, terminal Gather and bridge; 20 targeted schema/API checks, including unchanged 5 L persistence and tenant-bound writes. No new call was placed and no migration was applied. The SaaS Gather migration remains separate; preserving terminal Gather is not a claim that trial calls are deployed in Nila.
