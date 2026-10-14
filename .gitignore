@@ -24,3 +24,18 @@ node_modules
 playwright-report/
 test-results/
 *.tsbuildinfo
+
+# Local-only agent skills and design-tool metadata
+.agents/
+**/.agents/
+.21st/
+**/.21st/
+skills-lock.json
+CODEX-SKILL-NAMES.md
+SKILLS-INSTALL-REPORT.md
+
+# Generated local HyperFrames preview/cache files
+**/.thumbnails/
+**/.waveform-cache/
+**/.transcode-cache/
+**/.media/
